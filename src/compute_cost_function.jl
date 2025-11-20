@@ -38,15 +38,14 @@ end
 
 # Define the function to compute the cost function using two matrix product states
 # and multiple layers of two-qubit gates as input
-function cost_function_layers(psi_L::MPS, psi_R::MPS, input_gates::Vector{Any}, 
+function compute_cost_function_multi_layers(psi_ket::MPS, psi_bra::MPS, input_gates::Vector{Any}, 
   input_cutoff::Float64 = 1e-14)
 
   circuit_depth = length(input_gates)
-
   for idx in 1 : circuit_depth
-    psi_L = apply(input_gates[idx], psi_L; cutoff=input_cutoff)
+    psi_ket = apply(input_gates[idx], psi_ket; cutoff=input_cutoff)
   end
-  normalize!(psi_L)
+  normalize!(psi_ket)
 
-  return real(inner(psi_L, psi_R))
+  return real(inner(psi_bra, psi_ket))
 end

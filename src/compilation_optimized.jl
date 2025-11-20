@@ -69,7 +69,7 @@ let
   # indices_pairs = [[7, 8], [9, 10], [11, 12]]
   input_pairs = [
                   [[1, 2], [3, 4], [5, 6], [7, 8]], 
-                  # [[2, 3], [4, 5], [6, 7]], 
+                  [[2, 3], [4, 5], [6, 7]], 
                   # [[1, 2], [3, 4], [5, 6], [7, 8]], 
                   # [[2, 3], [4, 5], [6, 7]]
                 ]
@@ -112,58 +112,58 @@ let
   #*****************************************************************************************************
 
 
-  #*****************************************************************************************************
-  #*****************************************************************************************************
-  # Compress wave functions with layers of two-qubit gates 
-  ψ_ket_collection = []
-  ψ_bra_collection = []
+  # #*****************************************************************************************************
+  # #*****************************************************************************************************
+  # # Compress wave functions with layers of two-qubit gates 
+  # ψ_ket_collection = []
+  # ψ_bra_collection = []
   
   
-  # Check the depth of the circuit gates
-  if length(circuit_gates) <= 0
-    error("No two-qubit gates provided for compilation!")
-  end
+  # # Check the depth of the circuit gates
+  # if length(circuit_gates) <= 0
+  #   error("No two-qubit gates provided for compilation!")
+  # end
   
   
-  # Generate and store the intermediate MPS from the ψ₀ side 
-  for layer_idx in 1 : length(circuit_gates)
-    ψ_temp = deepcopy(ψ₀)
-    if layer_idx == 1
-      push!(ψ_ket_collection, ψ_temp)
-    else
-      for idx in 1 : layer_idx - 1
-        ψ_temp = apply(circuit_gates[idx], ψ_temp; cutoff=cutoff)
-      end
-      normalize!(ψ_temp)
-      push!(ψ_ket_collection, ψ_temp)
-    end
-  end
-  println("\nLength of the intermediate ket MPS collection:")
-  @show length(ψ_ket_collection)
+  # # Generate and store the intermediate MPS from the ψ₀ side 
+  # for layer_idx in 1 : length(circuit_gates)
+  #   ψ_temp = deepcopy(ψ₀)
+  #   if layer_idx == 1
+  #     push!(ψ_ket_collection, ψ_temp)
+  #   else
+  #     for idx in 1 : layer_idx - 1
+  #       ψ_temp = apply(circuit_gates[idx], ψ_temp; cutoff=cutoff)
+  #     end
+  #     normalize!(ψ_temp)
+  #     push!(ψ_ket_collection, ψ_temp)
+  #   end
+  # end
+  # println("\nLength of the intermediate ket MPS collection:")
+  # @show length(ψ_ket_collection)
 
   
-  # Generate and store the intermediate MPS from the ψ_T side
-  for layer_idx in 1:length(circuit_gates)
-    ψ_temp = deepcopy(ψ_T)
-    if layer_idx == length(circuit_gates)
-      push!(ψ_bra_collection, ψ_temp)
-    else
-      for idx in length(circuit_gates):-1:layer_idx + 1
-        temporary_gates = deepcopy(circuit_gates)
-        for gate_idx in eachindex(temporary_gates)
-          temporary_gates[gate_idx] = dag(temporary_gates[gate_idx])
-          swapprime!(temporary_gates[gate_idx], 0 => 1)
-        end
-        ψ_temp = apply(temporary_gates[idx], ψ_temp; cutoff=cutoff)
-      end
-      normalize!(ψ_temp)
-      push!(ψ_bra_collection, ψ_temp)
-    end
-  end
-  println("\nLength of the intermediate bra MPS collection:")
-  @show length(ψ_bra_collection)
-  #*****************************************************************************************************
-  #*****************************************************************************************************
+  # # Generate and store the intermediate MPS from the ψ_T side
+  # for layer_idx in 1:length(circuit_gates)
+  #   ψ_temp = deepcopy(ψ_T)
+  #   if layer_idx == length(circuit_gates)
+  #     push!(ψ_bra_collection, ψ_temp)
+  #   else
+  #     for idx in length(circuit_gates):-1:layer_idx + 1
+  #       temporary_gates = deepcopy(circuit_gates[idx])
+  #       for gate_idx in 1 : length(temporary_gates)
+  #         temporary_gates[gate_idx] = dag(temporary_gates[gate_idx])
+  #         swapprime!(temporary_gates[gate_idx], 0 => 1)
+  #       end
+  #       ψ_temp = apply(temporary_gates, ψ_temp; cutoff=cutoff)
+  #     end
+  #     normalize!(ψ_temp)
+  #     push!(ψ_bra_collection, ψ_temp)
+  #   end
+  # end
+  # println("\nLength of the intermediate bra MPS collection:")
+  # @show length(ψ_bra_collection)
+  # #*****************************************************************************************************
+  # #*****************************************************************************************************
 
   #*****************************************************************************************************
   #*****************************************************************************************************
@@ -171,14 +171,39 @@ let
   cost_function, reference = Vector{Float64}(undef, nsweeps), Vector{Float64}(undef, nsweeps)
   optimization_trace, fidelity_trace = Float64[], Float64[]
   
-  for iteration in 1 : nsweeps
-    
+  for iteration in 1 : nsweeps 
     for layer_idx in 1 : length(circuit_gates)
       optimization_gates = circuit_gates[layer_idx]
       idx_pairs = input_pairs[layer_idx]
-      ψ_left = ψ_ket_collection[layer_idx]
-      ψ_right = ψ_bra_collection[layer_idx]
+
       
+      # Compress the optimization circuit from the initial MPS side
+      ψ_left = deepcopy(ψ₀)
+      if layer_idx > 1
+        for idx in 1 : layer_idx - 1
+          ψ_left = apply(circuit_gates[idx], ψ_left; cutoff=cutoff)
+        end
+        normalize!(ψ_left)
+      end
+      # ψ_left = ψ_ket_collection[layer_idx]
+      
+      
+      # Compress the optimization circuit from the target MPS side 
+      ψ_right = deepcopy(ψ_T)
+      if layer_idx < length(circuit_gates)
+        for tmp_idx in length(circuit_gates):-1:layer_idx + 1
+          temporary_gates = deepcopy(circuit_gates[tmp_idx])
+          for gate_idx in 1 : length(temporary_gates)
+            temporary_gates[gate_idx] = dag(temporary_gates[gate_idx])
+            swapprime!(temporary_gates[gate_idx], 0 => 1)
+          end
+          ψ_right = apply(temporary_gates, ψ_right; cutoff=cutoff)
+        end
+        normalize!(ψ_right)  
+      end
+      # ψ_right = ψ_bra_collection[layer_idx]
+      
+
       # Update each two-qubit gate in the forward order
       println(repeat("#", 200))
       println("Iteration = $iteration: Forward Sweep")
@@ -275,8 +300,8 @@ let
 
   
   println("\nResults after optimization:")
-  @show optimization_trace
-  @show fidelity_trace
+  @show optimization_trace[1:20]
+  @show fidelity_trace[1:20]
   @show cost_function
   # @show reference 
   

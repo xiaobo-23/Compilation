@@ -4,7 +4,8 @@
 using ITensors
 using ITensorMPS
 
-# Function to generate the sequence of target two-qubit gates using the Heisenberg interaction
+
+# Function to generate a single-layer of two-qubit gates using the Heisenberg interaction
 function heisenberg_gates_single_layer(input_pairs::Vector{Vector{Int64}}, 
   J::Float64, Δτ::Float64, input_sites)
   gates = ITensor[]
@@ -25,7 +26,24 @@ function heisenberg_gates_single_layer(input_pairs::Vector{Vector{Int64}},
 end
 
 
-# Function to generate a sequence of random two-qubit gates as the initial unitaries to be optimized
+
+# Function to generate multi-layers of two-qubit gates using the Heisenberg interaction
+function heisenberg_gates_multi_layers(pairs_array::Vector{Vector{Vector{Int64}}}, 
+  J::Float64, Δτ::Float64, input_sites)
+  circuit_depth = length(pairs_array)
+  output_gates = []
+
+  for idx in 1 : circuit_depth
+    gates_layer = heisenberg_gates_single_layer(pairs_array[idx], J, Δτ, input_sites)
+    push!(output_gates, gates_layer)
+  end
+
+  return output_gates
+end
+
+
+
+# Function to generate a single-layer of random two-qubit gates as the initial unitaries to be optimized
 function random_gates_single_layer(input_pairs::Vector{Vector{Int64}}, input_sites)
   gates = ITensor[]
   for idx in eachindex(input_pairs)
@@ -42,3 +60,17 @@ function random_gates_single_layer(input_pairs::Vector{Vector{Int64}}, input_sit
 
   return gates
 end 
+
+
+# Function to generate multi-layers of random two-qubit gates as the initial unitaries to be optimized
+function random_gates_multi_layers(pairs_array::Vector{Vector{Vector{Int64}}}, input_sites)
+  circuit_depth = length(pairs_array)
+  output_gates = []
+
+  for idx in 1 : circuit_depth
+    gates_layer = random_gates_single_layer(pairs_array[idx], input_sites)
+    push!(output_gates, gates_layer)
+  end
+
+  return output_gates
+end
