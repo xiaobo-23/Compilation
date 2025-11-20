@@ -112,6 +112,39 @@ let
   #*****************************************************************************************************
 
 
+  #*****************************************************************************************************
+  #*****************************************************************************************************
+  # Compress wave functions with layers of two-qubit gates 
+  ψ_ket_collection = []
+  ψ_bra_collection = []
+  
+  
+  # Check the depth of the circuit gates
+  if length(circuit_gates) <= 0
+    error("No two-qubit gates provided for compilation!")
+  end
+  
+  
+  # Generate and store the intermediate MPS from the ψ₀ side 
+  for layer_idx in 1 : length(circuit_gates)
+    ψ_temp = deepcopy(ψ₀)
+    if layer_idx == 1
+      push!(ψ_ket_collection, ψ_temp)
+    else
+      for idx in 1 : layer_idx - 1
+        ψ_temp = apply(circuit_gates[idx], ψ_temp; cutoff=cutoff)
+      end
+      normalize!(ψ_temp)
+      push!(ψ_ket_collection, ψ_temp)
+    end
+  end
+
+
+  # Generate and store the intermediate MPS from the ψ_T side
+  #*****************************************************************************************************
+  #*****************************************************************************************************
+
+
 
   #*****************************************************************************************************
   #*****************************************************************************************************
@@ -158,13 +191,12 @@ let
       end
       println(repeat("#", 200))
       println("")
-    
-
-      # Compute the cost function after each sweep
-      cost_function[iteration] = compute_cost_function(ψ₀, ψ_T, optimization_gates, cutoff)
-      reference[iteration] = compute_cost_function(ψ₀, ψ_T, gates[layer_idx], cutoff)
     end
 
+
+    # Compute the cost function after each sweep
+    cost_function[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
+    reference[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, gates, cutoff)
   end
 
   
