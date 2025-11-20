@@ -6,27 +6,40 @@ using ITensors
 using ITensorMPS
 
 
-# Define the function to compute the cost function using two matrix product states 
+# Define a function to compute the cost function given two MPS and a set of unitaries
 # and a single layer of two-qubit gates as input
-function compute_cost_function(psi_L::MPS, psi_R::MPS, input_gates::Vector{ITensor}, 
-  input_cutoff::Float64 = 1e-10)
-  psi_intermediate = apply(input_gates, psi_L; cutoff=input_cutoff)
-  normalize!(psi_intermediate)
-
-  # fidelity = ITensor(1)
-  # for idx₁ in 1:length(psi_intermediate)
-  #   fidelity *= (psi_intermediate[idx₁] * dag(psi_R[idx₁]))
-  # end
-  # @show real(fidelity[1]) ≈ real(inner(psi_intermediate, psi_R)), real(fidelity[1]), real(inner(psi_intermediate, psi_R)) 
+function compute_cost_function(psi_ket::MPS, psi_bra::MPS, input_gates::Vector{ITensor}, input_cutoff::Float64 = 1e-14)
   
-  return real(inner(psi_intermediate, psi_R))
+  # Throw an error if the lengths of the two MPS are not the same
+  if length(psi_bra) != length(psi_ket)
+    error("The lengths of the two MPS must be the same!")
+  end
+  
+  
+  # Apply the input gates to the left MPS
+  intermediate_psi = apply(input_gates, psi_ket; cutoff=input_cutoff)
+  normalize!(intermediate_psi)
+
+  
+  # Compute the inner product between the two MPS after applying the gates; benchmark purposes only
+  psi_bra = orthogonalize(psi_bra, length(psi_bra))
+  intermediate_psi = orthogonalize(intermediate_psi, length(intermediate_psi))
+  
+  inner_product = ITensor(1)
+  for idx in eachindex(intermediate_psi)
+    inner_product *= (intermediate_psi[idx] * dag(psi_bra[idx]))
+  end
+  
+  
+  # @show real(inner_product[1]) ≈ real(inner(intermediate_psi, psi_bra))
+  return real(inner(intermediate_psi, psi_bra))
 end
 
 
 # Define the function to compute the cost function using two matrix product states
 # and multiple layers of two-qubit gates as input
 function cost_function_layers(psi_L::MPS, psi_R::MPS, input_gates::Vector{Any}, 
-  input_cutoff::Float64 = 1e-10)
+  input_cutoff::Float64 = 1e-14)
 
   circuit_depth = length(input_gates)
 
