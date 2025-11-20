@@ -138,13 +138,32 @@ let
       push!(ψ_ket_collection, ψ_temp)
     end
   end
+  println("\nLength of the intermediate ket MPS collection:")
+  @show length(ψ_ket_collection)
 
-
+  
   # Generate and store the intermediate MPS from the ψ_T side
+  for layer_idx in 1:length(circuit_gates)
+    ψ_temp = deepcopy(ψ_T)
+    if layer_idx == length(circuit_gates)
+      push!(ψ_bra_collection, ψ_temp)
+    else
+      for idx in length(circuit_gates):-1:layer_idx + 1
+        temporary_gates = deepcopy(circuit_gates)
+        for gate_idx in eachindex(temporary_gates)
+          temporary_gates[gate_idx] = dag(temporary_gates[gate_idx])
+          swapprime!(temporary_gates[gate_idx], 0 => 1)
+        end
+        ψ_temp = apply(temporary_gates[idx], ψ_temp; cutoff=cutoff)
+      end
+      normalize!(ψ_temp)
+      push!(ψ_bra_collection, ψ_temp)
+    end
+  end
+  println("\nLength of the intermediate bra MPS collection:")
+  @show length(ψ_bra_collection)
   #*****************************************************************************************************
   #*****************************************************************************************************
-
-
 
   #*****************************************************************************************************
   #*****************************************************************************************************
@@ -157,6 +176,8 @@ let
     for layer_idx in 1 : length(circuit_gates)
       optimization_gates = circuit_gates[layer_idx]
       idx_pairs = input_pairs[layer_idx]
+      ψ_left = ψ_ket_collection[layer_idx]
+      ψ_right = ψ_bra_collection[layer_idx]
       
       # Update each two-qubit gate in the forward order
       println(repeat("#", 200))
@@ -165,7 +186,7 @@ let
         idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
         @show idx₁, idx₂
         updated_gate, tmp_trace, tmp_cost = update_single_gate(
-          ψ₀, ψ_T, optimization_gates, idx, idx₁, idx₂, cutoff
+          ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, cutoff
         )
         optimization_gates[idx] = updated_gate
         append!(optimization_trace, tmp_trace)
@@ -183,7 +204,7 @@ let
         idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
         @show idx₁, idx₂
         updated_gate, tmp_trace, tmp_cost = update_single_gate(
-          ψ₀, ψ_T, optimization_gates, idx, idx₁, idx₂, cutoff
+          ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, cutoff
         )
         optimization_gates[idx] = updated_gate
         append!(optimization_trace, tmp_trace)
@@ -198,6 +219,59 @@ let
     cost_function[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
     reference[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, gates, cutoff)
   end
+
+  # #*****************************************************************************************************
+  # #*****************************************************************************************************
+  # # Optimize the set of two-qubit gates using an iterative sweeping procedure
+  # cost_function, reference = Vector{Float64}(undef, nsweeps), Vector{Float64}(undef, nsweeps)
+  # optimization_trace, fidelity_trace = Float64[], Float64[]
+  
+  # for iteration in 1 : nsweeps
+    
+  #   for layer_idx in 1 : length(circuit_gates)
+  #     optimization_gates = circuit_gates[layer_idx]
+  #     idx_pairs = input_pairs[layer_idx]
+      
+  #     # Update each two-qubit gate in the forward order
+  #     println(repeat("#", 200))
+  #     println("Iteration = $iteration: Forward Sweep")
+  #     for idx in 1 : length(idx_pairs)
+  #       idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
+  #       @show idx₁, idx₂
+  #       updated_gate, tmp_trace, tmp_cost = update_single_gate(
+  #         ψ₀, ψ_T, optimization_gates, idx, idx₁, idx₂, cutoff
+  #       )
+  #       optimization_gates[idx] = updated_gate
+  #       append!(optimization_trace, tmp_trace)
+  #       append!(fidelity_trace, tmp_cost)
+  #     end
+  #     println(repeat("#", 200))
+  #     println("")
+  #     println("")
+      
+
+  #     # Update each two-qubit gate in the backward order
+  #     println(repeat("#", 200))
+  #     println("Iteration = $iteration: Backward Sweep")
+  #     for idx in length(idx_pairs):-1:1
+  #       idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
+  #       @show idx₁, idx₂
+  #       updated_gate, tmp_trace, tmp_cost = update_single_gate(
+  #         ψ₀, ψ_T, optimization_gates, idx, idx₁, idx₂, cutoff
+  #       )
+  #       optimization_gates[idx] = updated_gate
+  #       append!(optimization_trace, tmp_trace)
+  #       append!(fidelity_trace, tmp_cost)
+  #     end
+  #     println(repeat("#", 200))
+  #     println("")
+  #   end
+
+
+  #   # Compute the cost function after each sweep
+  #   cost_function[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
+  #   reference[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, gates, cutoff)
+  # end
 
   
   println("\nResults after optimization:")
