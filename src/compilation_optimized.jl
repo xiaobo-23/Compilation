@@ -14,7 +14,7 @@ using Random
 
 include("compute_cost_function.jl")
 include("update_gates.jl")
-
+include("compilation_initialization.jl")
 
 # Set up parameters for multithreading and parallelization
 MKL_NUM_THREADS = 8
@@ -29,9 +29,9 @@ OMP_NUM_THREADS = 8
 
 const N  = 12  # Total number of qubits
 const J₁ = 1.0
-const τ = 1
+const τ = 1.0
 const cutoff = 1e-12
-const nsweeps = 2
+const nsweeps = 3
 # const time_machine = TimerOutput()  # Timing and profiling
 
 
@@ -63,49 +63,33 @@ let
   
   #*****************************************************************************************************
   #*****************************************************************************************************
-  # Construct a sequence of two-qubit gates as the target unitaries
-  indices_pairs = [[7, 8], [9, 10], [11, 12]]  # Define pairs of qubit indices for two-qubit gates 
-  gates = ITensor[]
-  for idx in 1 : length(indices_pairs)
-    idx₁, idx₂ = indices_pairs[idx][1], indices_pairs[idx][2]
-    s₁ = sites[idx₁]
-    s₂ = sites[idx₂]
-
-    # Define a two-qubit gate, using the Heisenberg interaction as an example 
-    hj = 1/2 * J₁ * op("S+", s₁) * op("S-", s₂) + 1/2 * J₁ * op("S-", s₁) * op("S+", s₂) 
-      + J₁ * op("Sz", s₁) * op("Sz", s₂)
-    Gj = exp(-im * τ/2 * hj)
-    push!(gates, Gj)
-  end
+  # Construct the sequence of target gates and randomly intiialized gates to be optimized
+  # Define pairs of qubit indices for two-qubit gates 
+  indices_pairs = [[7, 8], [9, 10], [11, 12]]       
+  
+  # Target two-qubit gate sequence
+  gates = heisenberg_gates_single_layer(indices_pairs, J₁, τ, sites)    
   # @show gates
 
+  # Initial random two-qubit gate sequence
+  optimization_gates = random_gates_single_layer(indices_pairs, sites)   
+  # # @show length(optimization_gates)
+  #*****************************************************************************************************
+  #*****************************************************************************************************
   
-  # Construct a sequence of two-qubit gates as the initial random unitaries to be optimized 
-  optimization_gates = ITensor[]
-  for idx in 1 : length(indices_pairs)
-    idx₁, idx₂ = indices_pairs[idx][1], indices_pairs[idx][2]
-    s₁ = sites[idx₁]
-    s₂ = sites[idx₂]
-
-    # SVD a random tensor to obtain a random unitary by setting all the singular values to 1 
-    G_opt = randomITensor(s₁', s₂', s₁, s₂)
-    U, S, V = svd(G_opt, (s₁', s₂'))
-    G_random = U * delta(inds(S)[1], inds(S)[2]) * dag(V)
-    push!(optimization_gates, G_random)
-  end
-  # @show length(optimization_gates)
+  
 
 
-  
-  # Apply the sequence of two-qubit gates to the original MPS
-  ψ_R = deepcopy(ψ₀)                        
-  ψ_R = apply(gates, ψ_R; cutoff=cutoff)
-  normalize!(ψ_R)
-  
+  #*****************************************************************************************************
+  #*****************************************************************************************************
+  # Create the target MPS by applying the sequence of two-qubit gates to the original MPS
+  ψ_T = deepcopy(ψ₀)                        
+  ψ_T = apply(gates, ψ_T; cutoff=cutoff)
+  normalize!(ψ_T)
   
   # Sx_R, Sz_R = zeros(Float64, N), zeros(Float64, N)
-  Sx_R = expect(ψ_R, "Sx", sites = 1 : N)
-  Sz_R = expect(ψ_R, "Sz", sites = 1 : N)
+  Sx_R = expect(ψ_T, "Sx", sites = 1 : N)
+  Sz_R = expect(ψ_T, "Sz", sites = 1 : N)
   println("")
   println("After applying the sequence of two-qubit gates:")
   @show Sx₀
@@ -122,6 +106,7 @@ let
   optimization_trace, fidelity_trace = Float64[], Float64[]
   
   for iteration in 1 : nsweeps
+    
     # Update each two-qubit gate in the forward order
     println(repeat("#", 200))
     println("Iteration = $iteration: Forward Sweep")
@@ -129,7 +114,7 @@ let
       idx₁, idx₂ = indices_pairs[idx][1], indices_pairs[idx][2]
       @show idx₁, idx₂
       updated_gate, tmp_trace, tmp_cost = update_single_gate(
-        ψ₀, ψ_R, optimization_gates, idx, idx₁, idx₂, cutoff
+        ψ₀, ψ_T, optimization_gates, idx, idx₁, idx₂, cutoff
       )
       optimization_gates[idx] = updated_gate
       append!(optimization_trace, tmp_trace)
@@ -149,7 +134,7 @@ let
       idx₁, idx₂ = indices_pairs[idx][1], indices_pairs[idx][2]
       @show idx₁, idx₂
       updated_gate, tmp_trace, tmp_cost = update_single_gate(
-        ψ₀, ψ_R, optimization_gates, idx, idx₁, idx₂, cutoff
+        ψ₀, ψ_T, optimization_gates, idx, idx₁, idx₂, cutoff
       )
       optimization_gates[idx] = updated_gate
       append!(optimization_trace, tmp_trace)
@@ -160,8 +145,8 @@ let
 
 
     # Compute the cost function after each sweep
-    cost_function[iteration] = compute_cost_function(ψ₀, ψ_R, optimization_gates, cutoff)
-    reference[iteration] = compute_cost_function(ψ₀, ψ_R, gates, cutoff)
+    cost_function[iteration] = compute_cost_function(ψ₀, ψ_T, optimization_gates, cutoff)
+    reference[iteration] = compute_cost_function(ψ₀, ψ_T, gates, cutoff)
   end
 
   
