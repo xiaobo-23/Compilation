@@ -38,7 +38,6 @@ const Jy::Float64 = 1.0
 const Jz::Float64 = 1.0 
 const κ::Float64 = -0.2
 # const t::Float64 = 0.1
-# const P::Float64 = -10.0
 const h::Float64 = 0.0
 const time_machine = TimerOutput()  # Timing and profiling
 
@@ -281,7 +280,7 @@ let
   H = MPO(os, sites)
   
   # Set up hyperparameters used in the DMRG simulations, including bond dimensions, cutoff etc.
-  nsweeps = 2
+  nsweeps = 10
   maxdim  = [20, 60, 100, 500, 800, 1000, 1500, 3000]
   cutoff  = [1E-10]
   eigsolve_krylovdim = 50
@@ -400,25 +399,25 @@ let
   #***************************************************************************************************************
 
   
-  # @show time_machine
-  # h5open("data/interferometry_kappa$(κ).h5", "cw") do file
-  #   write(file, "psi", ψ)
-  #   write(file, "E0", energy)
-  #   write(file, "E0variance", variance)
-  #   write(file, "Ehist", custom_observer.ehistory)
-  #   write(file, "Bond", custom_observer.chi)
-  #   # write(file, "Entropy", SvN)
-  #   write(file, "Sx0", Sx₀)
-  #   write(file, "Sx",  Sx)
-  #   write(file, "Cxx", xxcorr)
-  #   write(file, "Sy0", Sy₀)
-  #   write(file, "Sy", Sy)
-  #   write(file, "Cyy", yycorr)
-  #   write(file, "Sz0", Sz₀)
-  #   write(file, "Sz",  Sz)
-  #   write(file, "Czz", zzcorr)
-  #   write(file, "Plaquette", plaquette_eigenvalues)
-  # end
+  @show time_machine
+  h5open("data/interferometry_kappa$(κ).h5", "cw") do file
+    write(file, "psi", ψ)
+    write(file, "E0", energy)
+    write(file, "E0variance", variance)
+    write(file, "Ehist", custom_observer.ehistory)
+    write(file, "Bond", custom_observer.chi)
+    # write(file, "Entropy", SvN)
+    write(file, "Sx0", Sx₀)
+    write(file, "Sx",  Sx)
+    write(file, "Cxx", xxcorr)
+    write(file, "Sy0", Sy₀)
+    write(file, "Sy", Sy)
+    write(file, "Cyy", yycorr)
+    write(file, "Sz0", Sz₀)
+    write(file, "Sz",  Sz)
+    write(file, "Czz", zzcorr)
+    write(file, "Plaquette", plaquette_vals)
+  end
 
   return
 end
