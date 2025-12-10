@@ -11,7 +11,6 @@ using LinearAlgebra
 using TimerOutputs
 
 
-
 include("interferometry_lattice.jl")
 include("Entanglement.jl")
 include("TopologicalLoops.jl")
@@ -51,23 +50,22 @@ let
   println(header)
   println(header)
   println("Obtain the ground state of the interferometry setup of the 2D Kitaev model using DMRG")
-  
+  println("")
+  println("")
   
   # # Scaling factor for the Kitaev interaction to set up the interferometry
   # α = 1E-6
 
   
   # Set up the bonds on a honeycomb lattice for the two-spin interactions
-  println("")
+  println(repeat("*", 100))
   println("Setting up the bonds on a honeycomb lattice")
   lattice = interferometry_lattice_obc(Nx, Ny, N)
   number_of_bonds = length(lattice)
-  # @show number_of_bonds
-  # for (idx, bond) in enumerate(lattice)
-  #   @show bond.s1, bond.s2
-  # end
-  # println(header)
-  # println("")
+  
+  for (idx, bond) in enumerate(lattice)
+    @show bond.s1, bond.s2
+  end
 
   
   # # Set up the wedge terms on a honeycomb lattice for the three-spin interactions
