@@ -53,20 +53,24 @@ let
   println("")
   println("")
   
-  # # Scaling factor for the Kitaev interaction to set up the interferometry
-  # α = 1E-6
-
   
-  # Set up the bonds on a honeycomb lattice for the two-spin interactions
+  """
+    Set up the bonds on the interferometry lattice
+    Use these bonds to set up the two-body Kitaev interactions in the Hamiltonian
+  """
+  
   println(repeat("*", 100))
   println("Setting up the bonds on a honeycomb lattice")
   lattice = interferometry_lattice_obc(Nx, Ny, N)
   number_of_bonds = length(lattice)
   
+  
+  println("\nPrinting the bonds on the interferometry lattice:")
   for (idx, bond) in enumerate(lattice)
     @show bond.s1, bond.s2
   end
-
+  println("")
+  
   
   # # Set up the wedge terms on a honeycomb lattice for the three-spin interactions
   # println(repeat("*", 200))
@@ -81,76 +85,104 @@ let
   # println("")
 
 
-  # # Remove sites to set up the interferometry
-  # empty_sites = Set{Int64}([3, 6, 44, 47])
-  # y_periodic = true
+  """
+    Construct the two-body interactions in the Hamiltonian
+  """
+  
+  println("\n", repeat("*", 100))
+  println("Setting up two-body interactions in the Hamiltonian")
+  
+
+  # Define the constrictions on the interferometry lattice
+  constriction₁ = [17, 20]
+  constriction₂ = [39, 42]
+  α = 4     # A scaling factor to make the interaction on the constriction stronger 
+
+
+  # Set up the width profile and gauge to set up the x and y coordinates for each lattice site
+  width_profile = Int[]
+	for i in 1:5
+		append!(width_profile, [3, 4, 4])
+	end
+	push!(width_profile, 3)
 
   
-  # #***************************************************************************************************************
-  # #***************************************************************************************************************
-  # # Construct the Kitaev interaction and electron hoppings 
-  # os = OpSum()
-  # xbond::Int = 0
-  # ybond::Int = 0
-  # zbond::Int = 0
-  
-  # println(repeat("*", 200))
-  # println("Setting up two-body interactions in the Hamiltonian")
+  x_gauge = Int[]
+  for idx in 0:length(width_profile)
+		append!(x_gauge, sum(width_profile[1:idx]))
+	end
+  println("\nThe gauge for x coordinates of each lattice site is:")
+  @show x_gauge
 
-  # for b in lattice
-  #   # Set up the hopping terms for spin-up and spin-down electrons
-  #   # os .+= -t, "Cdagup", b.s1, "Cup", b.s2
-  #   # os .+= -t, "Cdagup", b.s2, "Cup", b.s1
-  #   # os .+= -t, "Cdagdn", b.s1, "Cdn", b.s2
-  #   # os .+= -t, "Cdagdn", b.s2, "Cdn", b.s1
-    
-  #   # Set up the anisotropic two-body Kitaev interaction
-  #   if b.s1 in empty_sites || b.s2 in empty_sites
-  #     effective_Jx = α * Jx
-  #     effective_Jy = α * Jy
-  #     effective_Jz = α * Jz
-  #   else
-  #     effective_Jx = Jx
-  #     effective_Jy = Jy
-  #     effective_Jz = Jz
-  #   end
 
-  #   tmp_x = div(b.s1 - 1, Ny) + 1
-  #   if iseven(tmp_x)
-  #     os .+= -effective_Jz, "Sz", b.s1, "Sz", b.s2
-  #     zbond += 1
-  #     @info "Added Sz-Sz bond" term = ("Jz", effective_Jz, "Sz", b.s1, "Sz", b.s2)
-  #   else
-  #     if tmp_x == 1
-  #       if abs(b.s1 - b.s2) == Ny 
-  #         os .+= -effective_Jx, "Sx", b.s1, "Sx", b.s2
-  #         xbond += 1
-  #         @info "Added Sx-Sx bond" term = ("Jx", effective_Jx, "Sx", b.s1, "Sx", b.s2)
-  #       else
-  #         os .+= -effective_Jy, "Sy", b.s1, "Sy", b.s2
-  #         ybond += 1
-  #         @info "Added Sy-Sy bond" term = ("Jy", effective_Jy, "Sy", b.s1, "Sy", b.s2)
-  #       end
-  #     else
-  #       if abs(b.s1 - b.s2) == Ny 
-  #         os .+= -effective_Jy, "Sy", b.s1, "Sy", b.s2
-  #         ybond += 1
-  #         @info "Added Sy-Sy bond" term = ("Jy", effective_Jy, "Sy", b.s1, "Sy", b.s2)
-  #       else
-  #         os .+= -effective_Jx, "Sx", b.s1, "Sx", b.s2
-  #         xbond += 1
-  #         @info "Added Sx-Sx bond" term = ("Jx", effective_Jx, "Sx", b.s1, "Sx", b.s2)
-  #       end
-  #     end
-  #   end
-  # end
+  # Set up counters for different types of bonds 
+  xbond::Int = 0
+  ybond::Int = 0
+  zbond::Int = 0
+
+
+ 
+  # Loop through all the bonds in the lattice to set up the two-body interactions 
+  os = OpSum()
+  for b in lattice
+    if (b.s1 == constriction₁[1] && b.s2 == constriction₁[2]) || (b.s1 == constriction₁[2] && b.s2 == constriction₁[1]) || 
+       (b.s1 == constriction₂[1] && b.s2 == constriction₂[2]) || (b.s1 == constriction₂[2] && b.s2 == constriction₂[1])
+      effective_Jx = α * Jx
+      effective_Jy = α * Jy
+      effective_Jz = α * Jz
+    else
+      effective_Jx = Jx
+      effective_Jy = Jy
+      effective_Jz = Jz
+    end
+
+
+    # Determine the x and y coordinates of the first site in the bond
+    x = 0
+		for idx in 1 : length(x_gauge) - 1
+			if b.s1 > x_gauge[idx] && b.s1 <= x_gauge[idx + 1]
+				x = idx
+				break
+			end
+		end
+
+    y = 0
+		if width_profile[x] == 4
+			for idx in 1 : length(x_gauge) - 1
+				if b.s1 > x_gauge[idx] && b.s1 <= x_gauge[idx + 1]
+					tmp = b.s1 - x_gauge[idx]
+					y = mod(tmp - 1, 4) + 1
+					break
+				end
+			end
+		end
+		# @show b.s1, x, y
+
+
+    if iseven(x)
+      os .+= -effective_Jz, "Sz", b.s1, "Sz", b.s2
+      zbond += 1
+      @info "Added Sz-Sz bond" term = ("Jz", effective_Jz, "Sz", b.s1, "Sz", b.s2)
+    else
+      if abs(b.s1 - b.s2) == Ny 
+        os .+= -effective_Jx, "Sx", b.s1, "Sx", b.s2
+        xbond += 1
+        @info "Added Sx-Sx bond" term = ("Jx", effective_Jx, "Sx", b.s1, "Sx", b.s2)
+      elseif abs(b.s1 - b.s2) == Ny - 1
+        os .+= -effective_Jy, "Sy", b.s1, "Sy", b.s2
+        ybond += 1
+        @info "Added Sy-Sy bond" term = ("Jy", effective_Jy, "Sy", b.s1, "Sy", b.s2)
+      end
+    end
+  end
   
-  # # Check whether number of bonds is correct 
-  # @show xbond, ybond, zbond, number_of_bonds
-  # if xbond + ybond + zbond != number_of_bonds
-  #   error("The number of bonds in the Hamiltonian is not correct!")
-  # end
-  # println("")
+  # Check whether the sum of all types of bonds is equal to the total number of bonds
+  println("\nChecking the number of bonds in the Hamiltonian:")
+  @show xbond, ybond, zbond, number_of_bonds
+  if xbond + ybond + zbond != number_of_bonds
+    error("The number of bonds in the Hamiltonian is not correct!")
+  end
+  println("")
  
   # #***************************************************************************************************************
   # #***************************************************************************************************************
@@ -250,46 +282,46 @@ let
   # #*************************************************************************************************************** 
   
   
-  # #***************************************************************************************************************
-  # #***************************************************************************************************************
-  # # Run DMRG simulations to find the ground-state wavefunction
-  # println(repeat("*", 200))
-  # println("Running DMRG simulations to find the ground-state wavefunction")
+  #***************************************************************************************************************
+  #***************************************************************************************************************
+  # Run DMRG simulations to find the ground-state wavefunction
+  println(repeat("*", 100))
+  println("Running DMRG simulations to find the ground-state wavefunction")
 
-  # # Initialize the wavefunction as a random MPS and set up the Hamiltonian as an MPO
-  # sites = siteinds("S=1/2", N)
-  # state = [isodd(n) ? "Up" : "Dn" for n in 1:N]
-  # ψ₀ = randomMPS(sites, state, 10)
-  # H = MPO(os, sites)
+  # Initialize the wavefunction as a random MPS and set up the Hamiltonian as an MPO
+  sites = siteinds("S=1/2", N)
+  state = [isodd(n) ? "Up" : "Dn" for n in 1:N]
+  ψ₀ = randomMPS(sites, state, 8)
+  H = MPO(os, sites)
   
-  # # Set up hyperparameters used in the DMRG simulations, including bond dimensions, cutoff etc.
-  # nsweeps = 10
-  # maxdim  = [20, 60, 100, 500, 800, 1000, 1500, 3000]
-  # cutoff  = [1E-10]
-  # eigsolve_krylovdim = 50
+  # Set up hyperparameters used in the DMRG simulations, including bond dimensions, cutoff etc.
+  nsweeps = 10
+  maxdim  = [20, 60, 100, 500, 800, 1000]
+  cutoff  = [1E-10]
+  eigsolve_krylovdim = 50
   
-  # # Add noise terms to prevent DMRG from getting stuck in a local minimum
-  # # noise = [1E-6, 1E-7, 1E-8, 0.0]
+  # Add noise terms to prevent DMRG from getting stuck in a local minimum
+  # noise = [1E-6, 1E-7, 1E-8, 0.0]
   
-  # # Measure one-point functions of the initial state
-  # Sx₀ = expect(ψ₀, "Sx", sites = 1 : N)
-  # Sy₀ = im * expect(ψ₀, "iSy", sites = 1 : N)
-  # Sz₀ = expect(ψ₀, "Sz", sites = 1 : N)
+  # Measure one-point functions of the initial state
+  Sx₀ = expect(ψ₀, "Sx", sites = 1 : N)
+  Sy₀ = im * expect(ψ₀, "iSy", sites = 1 : N)
+  Sz₀ = expect(ψ₀, "Sz", sites = 1 : N)
 
 
-  # # Construct a custom observer and stop the DMRG calculation early if criteria are met
-  # # custom_observer = DMRGObserver(; energy_tol=1E-9, minsweeps=2, energy_type=Float64)
-  # custom_observer = CustomObserver()
-  # @show custom_observer.etolerance
-  # @show custom_observer.minsweeps
-  # @timeit time_machine "dmrg simulation" begin
-  #   energy, ψ = dmrg(H, ψ₀; nsweeps, maxdim, cutoff, eigsolve_krylovdim, observer = custom_observer)
-  # end
+  # Construct a custom observer and stop the DMRG calculation early if criteria are met
+  # custom_observer = DMRGObserver(; energy_tol=1E-9, minsweeps=2, energy_type=Float64)
+  custom_observer = CustomObserver()
+  @show custom_observer.etolerance
+  @show custom_observer.minsweeps
+  @timeit time_machine "dmrg simulation" begin
+    energy, ψ = dmrg(H, ψ₀; nsweeps, maxdim, cutoff, eigsolve_krylovdim, observer = custom_observer)
+  end
 
-  # println("Final ground-state energy = $energy")
-  # println(repeat("*", 200))
-  # #***************************************************************************************************************
-  # #***************************************************************************************************************
+  println("Final ground-state energy = $energy")
+  println(repeat("*", 200))
+  #***************************************************************************************************************
+  #***************************************************************************************************************
 
   # #***************************************************************************************************************
   # #***************************************************************************************************************

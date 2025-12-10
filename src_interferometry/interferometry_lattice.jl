@@ -90,7 +90,7 @@ function interferometry_lattice_obc(Nx::Int, Ny::Int, Nsites::Int)::Lattice
 	for idx in 0:length(geometry_profile)
 		append!(xcoordinate_gauge, sum(geometry_profile[1:idx]))
 	end
-	@show xcoordinate_gauge	
+	# @show xcoordinate_gauge	
 
 
 	# Set up the lattice as an tuple of bonds
