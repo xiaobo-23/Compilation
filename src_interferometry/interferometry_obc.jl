@@ -60,7 +60,7 @@ let
   """
   
   println(repeat("*", 100))
-  println("Setting up the bonds on a honeycomb lattice")
+  println("Setting up the bonds on the interferometry lattice")
   lattice = interferometry_lattice_obc(Nx, Ny, N)
   number_of_bonds = length(lattice)
   
@@ -72,10 +72,17 @@ let
   println("")
   
   
-  # # Set up the wedge terms on a honeycomb lattice for the three-spin interactions
-  # println(repeat("*", 200))
-  # println("Setting up the wedgeds on a honeycomb lattice")
-  # wedge = honeycomb_wedge_interferometry(Nx, Ny; yperiodic=true)
+  
+  """
+    Set up the wedges on the interferometry lattice
+    Use these wedges to set up the three-spin interaction terms in the Hamiltonian
+  """
+
+
+  println(repeat("*", 100))
+  println("Setting up the three-spin interaction on the interferometry lattice")
+  
+  wedge = interferometry_wedge(Nx, Ny, N)
   # number_of_wedges = length(wedge)
   # @show number_of_wedges
   # for (idx, tmp) in enumerate(wedge)
@@ -137,7 +144,7 @@ let
     end
 
 
-    # Determine the x and y coordinates of the first site in the bond
+    # Determine the x and coordinate the first site in the bond
     x = 0
 		for idx in 1 : length(x_gauge) - 1
 			if b.s1 > x_gauge[idx] && b.s1 <= x_gauge[idx + 1]
@@ -145,20 +152,10 @@ let
 				break
 			end
 		end
-
-    y = 0
-		if width_profile[x] == 4
-			for idx in 1 : length(x_gauge) - 1
-				if b.s1 > x_gauge[idx] && b.s1 <= x_gauge[idx + 1]
-					tmp = b.s1 - x_gauge[idx]
-					y = mod(tmp - 1, 4) + 1
-					break
-				end
-			end
-		end
-		# @show b.s1, x, y
+    @show b.s1, x
 
 
+    # Set up the two-body interaction terms based on the bond type
     if iseven(x)
       os .+= -effective_Jz, "Sz", b.s1, "Sz", b.s2
       zbond += 1
@@ -175,6 +172,7 @@ let
       end
     end
   end
+  
   
   # Check whether the sum of all types of bonds is equal to the total number of bonds
   println("\nChecking the number of bonds in the Hamiltonian:")
@@ -284,33 +282,35 @@ let
   
   #***************************************************************************************************************
   #***************************************************************************************************************
-  # Run DMRG simulations to find the ground-state wavefunction
+  """
+    Obtain the ground-state wavefunction using DMRG
+  """
   println(repeat("*", 100))
   println("Running DMRG simulations to find the ground-state wavefunction")
 
+  
   # Initialize the wavefunction as a random MPS and set up the Hamiltonian as an MPO
   sites = siteinds("S=1/2", N)
   state = [isodd(n) ? "Up" : "Dn" for n in 1:N]
   ψ₀ = randomMPS(sites, state, 8)
   H = MPO(os, sites)
   
+  
   # Set up hyperparameters used in the DMRG simulations, including bond dimensions, cutoff etc.
   nsweeps = 10
   maxdim  = [20, 60, 100, 500, 800, 1000]
   cutoff  = [1E-10]
   eigsolve_krylovdim = 50
+  # noise = [1E-6, 1E-7, 1E-8, 0.0]   # Add a noise term to prevent DMRG from getting stuck in local minima
   
-  # Add noise terms to prevent DMRG from getting stuck in a local minimum
-  # noise = [1E-6, 1E-7, 1E-8, 0.0]
   
   # Measure one-point functions of the initial state
   Sx₀ = expect(ψ₀, "Sx", sites = 1 : N)
-  Sy₀ = im * expect(ψ₀, "iSy", sites = 1 : N)
+  Sy₀ = -im * expect(ψ₀, "iSy", sites = 1 : N)
   Sz₀ = expect(ψ₀, "Sz", sites = 1 : N)
 
 
   # Construct a custom observer and stop the DMRG calculation early if criteria are met
-  # custom_observer = DMRGObserver(; energy_tol=1E-9, minsweeps=2, energy_type=Float64)
   custom_observer = CustomObserver()
   @show custom_observer.etolerance
   @show custom_observer.minsweeps
@@ -319,27 +319,29 @@ let
   end
 
   println("Final ground-state energy = $energy")
-  println(repeat("*", 200))
+  # println(repeat("*", 200))
   #***************************************************************************************************************
   #***************************************************************************************************************
 
-  # #***************************************************************************************************************
-  # #***************************************************************************************************************
-  # # Take measurements of the optimized ground-state wavefunction
+  #***************************************************************************************************************
+  #***************************************************************************************************************
+  """
+    Measure various observables from the ground-state wavefunction
+  """
   
-  # # Measure local observables (one-point functions)
-  # @timeit time_machine "one-point functions" begin
-  #   Sx = expect(ψ, "Sx", sites = 1 : N)
-  #   Sy = expect(ψ, "Sy", sites = 1 : N)
-  #   Sz = expect(ψ, "Sz", sites = 1 : N)
-  # end
+  # Measure local observables (one-point functions)
+  @timeit time_machine "one-point functions" begin
+    Sx = expect(ψ, "Sx", sites = 1 : N)
+    Sy = -im * expect(ψ, "iSy", sites = 1 : N)
+    Sz = expect(ψ, "Sz", sites = 1 : N)
+  end
 
-  # # Measure spin correlation functions (two-point functions)
-  # @timeit time_machine "two-point functions" begin
-  #   xxcorr = correlation_matrix(ψ, "Sx", "Sx", sites = 1 : N)
-  #   zzcorr = correlation_matrix(ψ, "Sz", "Sz", sites = 1 : N)
-  #   yycorr = -1.0 * correlation_matrix(ψ, "iSy", "iSy", sites = 1 : N)
-  # end
+  # Measure spin correlation functions (two-point functions)
+  @timeit time_machine "two-point functions" begin
+    xxcorr = correlation_matrix(ψ, "Sx", "Sx", sites = 1 : N)
+    zzcorr = correlation_matrix(ψ, "Sz", "Sz", sites = 1 : N)
+    yycorr = -1.0 * correlation_matrix(ψ, "iSy", "iSy", sites = 1 : N)
+  end
 
 
   # # Measure the expectation values of the plaquette operators (six-point correlators) around each hexagon
@@ -377,10 +379,10 @@ let
   # @show plaquette_vals
 
   # println(repeat("*", 200))
-  # println("")
-  # #***************************************************************************************************************
-  # #***************************************************************************************************************
+  #***************************************************************************************************************
+  #***************************************************************************************************************
   
+
 
   # #***************************************************************************************************************
   # #***************************************************************************************************************

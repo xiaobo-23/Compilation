@@ -65,7 +65,7 @@ const Lattice = Vector{LatticeBond}
 
 function interferometry_lattice_obc(Nx::Int, Ny::Int, Nsites::Int)::Lattice
 	"""
-		Setting up the interferometry geometry
+		Setting up all bonds on the lattice in the interferometry
 		Nx is the number of columns and is an even number 
 	"""
 	# The default is open boundary condition along both the x and y directions
@@ -216,69 +216,74 @@ end
 
 # 05/21/2025
 # Implement the wedge object to introduce the three-body interaction on the XC geometry
-function honeycomb_wedge_interferometry(Nx::Int, Ny::Int; yperiodic=false)
+function interferometry_wedge(Nx::Int, Ny::Int, Nsites::Int)
 	"""
-		Use the XC geometry with a twist
+		Setting up all wedges on the lattice in the interferometry
+		Nx is the number of columns and is an even number
 	"""
-	yperiodic = yperiodic && (Ny > 2)
-	Nsite  = Nx * Ny							# Number of lattice sites
-	Nwedge = 3 * Nx * Ny  - 2 * 2 * Ny          # Number of lattice wedges
-	wedge = Vector{WedgeBond}(undef, Nwedge)
 
-	b = 0
-	for n in 1 : Nsite
-		x = div(n - 1, Ny) + 1
-		y = mod(n - 1, Ny) + 1
+	if Nsites != Nx * Ny - 6
+		error("The number of sites does not match the interferometry geometry!")
+	end
+	Nwedge = 3 * Nsites - 2 * (Ny - 1) - 2 * (Nx - 2) - 20
+	@info "Number of wedge bonds: $Nwedge"
+	
 
-		if iseven(x)
-			if x == 2
-				wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
-				if y != 1
-					wedge[b += 1] = WedgeBond(n - Ny - 1, n, n + Ny)
-					wedge[b += 1] = WedgeBond(n - Ny - 1, n, n - Ny)
-				else
-					wedge[b += 1] = WedgeBond(n - 1, n, n + Ny)
-					wedge[b += 1] = WedgeBond(n - Ny, n, n - 1)
-				end
-			elseif x == Nx 
-				if y == Ny
-					wedge[b += 1] = WedgeBond(n - 2 * Ny + 1, n, n - Ny)
-				else
-					wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
-				end
-			else
-				wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
-				if y == Ny
-					wedge[b += 1] = WedgeBond(n - 2 * Ny + 1, n, n - Ny)
-					wedge[b += 1] = WedgeBond(n - 2 * Ny + 1, n, n + Ny)
-				else
-					wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
-					wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
-				end
-			end
-		end
+	# wedge = Vector{WedgeBond}(undef, Nwedge)
+	# b = 0
+	# for n in 1 : Nsite
+	# 	x = div(n - 1, Ny) + 1
+	# 	y = mod(n - 1, Ny) + 1
+
+	# 	if iseven(x)
+	# 		if x == 2
+	# 			wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
+	# 			if y != 1
+	# 				wedge[b += 1] = WedgeBond(n - Ny - 1, n, n + Ny)
+	# 				wedge[b += 1] = WedgeBond(n - Ny - 1, n, n - Ny)
+	# 			else
+	# 				wedge[b += 1] = WedgeBond(n - 1, n, n + Ny)
+	# 				wedge[b += 1] = WedgeBond(n - Ny, n, n - 1)
+	# 			end
+	# 		elseif x == Nx 
+	# 			if y == Ny
+	# 				wedge[b += 1] = WedgeBond(n - 2 * Ny + 1, n, n - Ny)
+	# 			else
+	# 				wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
+	# 			end
+	# 		else
+	# 			wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
+	# 			if y == Ny
+	# 				wedge[b += 1] = WedgeBond(n - 2 * Ny + 1, n, n - Ny)
+	# 				wedge[b += 1] = WedgeBond(n - 2 * Ny + 1, n, n + Ny)
+	# 			else
+	# 				wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
+	# 				wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
+	# 			end
+	# 		end
+	# 	end
 
 		
-		if isodd(x)
-			if x == 1
-				if y != Ny 
-					wedge[b += 1] = WedgeBond(n + Ny, n, n + Ny + 1)
-				else
-					wedge[b += 1] = WedgeBond(n + 1, n, n + Ny)
-				end
-			else
-				wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
-				if y != 1 
-					wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny - 1)
-					wedge[b += 1] = WedgeBond(n + Ny - 1, n, n + Ny)
-				else
-					wedge[b += 1] = WedgeBond(n - Ny, n, n + 2 * Ny - 1)
-					wedge[b += 1] = WedgeBond(n + Ny, n, n + 2 * Ny - 1)
-				end
-			end
-		end		
-	end
+	# 	if isodd(x)
+	# 		if x == 1
+	# 			if y != Ny 
+	# 				wedge[b += 1] = WedgeBond(n + Ny, n, n + Ny + 1)
+	# 			else
+	# 				wedge[b += 1] = WedgeBond(n + 1, n, n + Ny)
+	# 			end
+	# 		else
+	# 			wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
+	# 			if y != 1 
+	# 				wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny - 1)
+	# 				wedge[b += 1] = WedgeBond(n + Ny - 1, n, n + Ny)
+	# 			else
+	# 				wedge[b += 1] = WedgeBond(n - Ny, n, n + 2 * Ny - 1)
+	# 				wedge[b += 1] = WedgeBond(n + Ny, n, n + 2 * Ny - 1)
+	# 			end
+	# 		end
+	# 	end		
+	# end
 
-	# @show wedge
-	return wedge
+	# # @show wedge
+	# return wedge
 end
