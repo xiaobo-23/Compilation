@@ -225,65 +225,115 @@ function interferometry_wedge(Nx::Int, Ny::Int, Nsites::Int)
 	if Nsites != Nx * Ny - 6
 		error("The number of sites does not match the interferometry geometry!")
 	end
-	Nwedge = 3 * Nsites - 2 * (Ny - 1) - 2 * (Nx - 2) - 20
+	Nwedge = 3 * Nsites - 4 * (Ny - 1) - 2 * (Nx - 2) - 20
 	@info "Number of wedge bonds: $Nwedge"
+
+
+	# Construct the geometry profile dynamically based on Nx
+	geometry_profile = Int[]
+	for i in 1:5
+		append!(geometry_profile, [3, 4, 4])
+	end
+	push!(geometry_profile, 3)
 	
 
-	# wedge = Vector{WedgeBond}(undef, Nwedge)
-	# b = 0
-	# for n in 1 : Nsite
-	# 	x = div(n - 1, Ny) + 1
-	# 	y = mod(n - 1, Ny) + 1
+	# Obtain an array to gaue the x coordinates of each lattice point
+	xcoordinate_gauge = Int[]
+	for idx in 0:length(geometry_profile)
+		append!(xcoordinate_gauge, sum(geometry_profile[1:idx]))
+	end
+	# @show xcoordinate_gauge	
+	
 
-	# 	if iseven(x)
-	# 		if x == 2
-	# 			wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
-	# 			if y != 1
-	# 				wedge[b += 1] = WedgeBond(n - Ny - 1, n, n + Ny)
-	# 				wedge[b += 1] = WedgeBond(n - Ny - 1, n, n - Ny)
-	# 			else
-	# 				wedge[b += 1] = WedgeBond(n - 1, n, n + Ny)
-	# 				wedge[b += 1] = WedgeBond(n - Ny, n, n - 1)
-	# 			end
-	# 		elseif x == Nx 
-	# 			if y == Ny
-	# 				wedge[b += 1] = WedgeBond(n - 2 * Ny + 1, n, n - Ny)
-	# 			else
-	# 				wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
-	# 			end
-	# 		else
-	# 			wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
-	# 			if y == Ny
-	# 				wedge[b += 1] = WedgeBond(n - 2 * Ny + 1, n, n - Ny)
-	# 				wedge[b += 1] = WedgeBond(n - 2 * Ny + 1, n, n + Ny)
-	# 			else
-	# 				wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
-	# 				wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
-	# 			end
-	# 		end
-	# 	end
+	wedge = Vector{WedgeBond}(undef, Nwedge)
+	b = 0
+	for n in 1 : Nsites
+		x = 0
+		for idx in 1 : length(xcoordinate_gauge) - 1
+			if n > xcoordinate_gauge[idx] && n <= xcoordinate_gauge[idx + 1]
+				x = idx
+				break
+			end
+		end
 
-		
-	# 	if isodd(x)
-	# 		if x == 1
-	# 			if y != Ny 
-	# 				wedge[b += 1] = WedgeBond(n + Ny, n, n + Ny + 1)
-	# 			else
-	# 				wedge[b += 1] = WedgeBond(n + 1, n, n + Ny)
-	# 			end
-	# 		else
-	# 			wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
-	# 			if y != 1 
-	# 				wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny - 1)
-	# 				wedge[b += 1] = WedgeBond(n + Ny - 1, n, n + Ny)
-	# 			else
-	# 				wedge[b += 1] = WedgeBond(n - Ny, n, n + 2 * Ny - 1)
-	# 				wedge[b += 1] = WedgeBond(n + Ny, n, n + 2 * Ny - 1)
-	# 			end
-	# 		end
-	# 	end		
-	# end
+		y = 0
+		if geometry_profile[x] == 4
+			for idx in 1 : length(xcoordinate_gauge) - 1
+				if n > xcoordinate_gauge[idx] && n <= xcoordinate_gauge[idx + 1]
+					tmp = n - xcoordinate_gauge[idx]
+					y = mod(tmp - 1, 4) + 1
+					break
+				end
+			end
+		end
+		# @show n, x, y
 
-	# # @show wedge
-	# return wedge
+		if x == 1
+			wedge[b += 1] = WedgeBond(n + Ny - 1, n, n + Ny)
+		elseif x == Nx 
+			wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
+		else
+			if iseven(x)
+				if xcoordinate_gauge[x] == Ny 
+					if xcoordinate_gauge[x + 1] == Ny - 1
+						if y == 1
+							wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
+						elseif y == Ny
+							wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny - 1)
+						else
+							wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
+							wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny - 1)
+							wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny - 1)
+						end
+					else
+						if y == 1
+							wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
+						elseif y == Ny 
+							wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
+						else
+							wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
+							wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
+							wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
+						end
+					end 
+				elseif xcoordinate_gauge[x] == Ny - 1
+					wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
+					wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny - 1)
+					wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny - 1)
+				end
+			else
+				if xcoordinate_gauge[x] == Ny - 1
+					wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
+					wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny - 1)
+					wedge[b += 1] = WedgeBond(n + Ny - 1, n, n + Ny)
+				else
+					if xcoordinate_gauge[x - 1] == Ny
+						if y == 1
+							wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
+						elseif y == Ny 
+							wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
+						else
+							wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
+							wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny - 1)
+							wedge[b += 1] = WedgeBond(n + Ny - 1, n, n + Ny)
+						end
+					else
+						if y == 1
+							wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
+						elseif y == Ny 
+							wedge[b += 1] = WedgeBond(n + Ny - 1, n, n + Ny)
+						else
+							wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
+							wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny - 1)
+							wedge[b += 1] = WedgeBond(n + Ny - 1, n, n + Ny)
+						end
+					end
+				end
+			end
+		end
+	end
+	
+
+	# @show wedge
+	return wedge
 end

@@ -280,68 +280,68 @@ let
   # #*************************************************************************************************************** 
   
   
-  #***************************************************************************************************************
-  #***************************************************************************************************************
-  """
-    Obtain the ground-state wavefunction using DMRG
-  """
-  println(repeat("*", 100))
-  println("Running DMRG simulations to find the ground-state wavefunction")
+  # #***************************************************************************************************************
+  # #***************************************************************************************************************
+  # """
+  #   Obtain the ground-state wavefunction using DMRG
+  # """
+  # println(repeat("*", 100))
+  # println("Running DMRG simulations to find the ground-state wavefunction")
 
   
-  # Initialize the wavefunction as a random MPS and set up the Hamiltonian as an MPO
-  sites = siteinds("S=1/2", N)
-  state = [isodd(n) ? "Up" : "Dn" for n in 1:N]
-  ψ₀ = randomMPS(sites, state, 8)
-  H = MPO(os, sites)
+  # # Initialize the wavefunction as a random MPS and set up the Hamiltonian as an MPO
+  # sites = siteinds("S=1/2", N)
+  # state = [isodd(n) ? "Up" : "Dn" for n in 1:N]
+  # ψ₀ = randomMPS(sites, state, 8)
+  # H = MPO(os, sites)
   
   
-  # Set up hyperparameters used in the DMRG simulations, including bond dimensions, cutoff etc.
-  nsweeps = 10
-  maxdim  = [20, 60, 100, 500, 800, 1000]
-  cutoff  = [1E-10]
-  eigsolve_krylovdim = 50
-  # noise = [1E-6, 1E-7, 1E-8, 0.0]   # Add a noise term to prevent DMRG from getting stuck in local minima
+  # # Set up hyperparameters used in the DMRG simulations, including bond dimensions, cutoff etc.
+  # nsweeps = 10
+  # maxdim  = [20, 60, 100, 500, 800, 1000]
+  # cutoff  = [1E-10]
+  # eigsolve_krylovdim = 50
+  # # noise = [1E-6, 1E-7, 1E-8, 0.0]   # Add a noise term to prevent DMRG from getting stuck in local minima
   
   
-  # Measure one-point functions of the initial state
-  Sx₀ = expect(ψ₀, "Sx", sites = 1 : N)
-  Sy₀ = -im * expect(ψ₀, "iSy", sites = 1 : N)
-  Sz₀ = expect(ψ₀, "Sz", sites = 1 : N)
+  # # Measure one-point functions of the initial state
+  # Sx₀ = expect(ψ₀, "Sx", sites = 1 : N)
+  # Sy₀ = -im * expect(ψ₀, "iSy", sites = 1 : N)
+  # Sz₀ = expect(ψ₀, "Sz", sites = 1 : N)
 
 
-  # Construct a custom observer and stop the DMRG calculation early if criteria are met
-  custom_observer = CustomObserver()
-  @show custom_observer.etolerance
-  @show custom_observer.minsweeps
-  @timeit time_machine "dmrg simulation" begin
-    energy, ψ = dmrg(H, ψ₀; nsweeps, maxdim, cutoff, eigsolve_krylovdim, observer = custom_observer)
-  end
+  # # Construct a custom observer and stop the DMRG calculation early if criteria are met
+  # custom_observer = CustomObserver()
+  # @show custom_observer.etolerance
+  # @show custom_observer.minsweeps
+  # @timeit time_machine "dmrg simulation" begin
+  #   energy, ψ = dmrg(H, ψ₀; nsweeps, maxdim, cutoff, eigsolve_krylovdim, observer = custom_observer)
+  # end
 
-  println("Final ground-state energy = $energy")
-  # println(repeat("*", 200))
-  #***************************************************************************************************************
-  #***************************************************************************************************************
+  # println("Final ground-state energy = $energy")
+  # # println(repeat("*", 200))
+  # #***************************************************************************************************************
+  # #***************************************************************************************************************
 
-  #***************************************************************************************************************
-  #***************************************************************************************************************
-  """
-    Measure various observables from the ground-state wavefunction
-  """
+  # #***************************************************************************************************************
+  # #***************************************************************************************************************
+  # """
+  #   Measure various observables from the ground-state wavefunction
+  # """
   
-  # Measure local observables (one-point functions)
-  @timeit time_machine "one-point functions" begin
-    Sx = expect(ψ, "Sx", sites = 1 : N)
-    Sy = -im * expect(ψ, "iSy", sites = 1 : N)
-    Sz = expect(ψ, "Sz", sites = 1 : N)
-  end
+  # # Measure local observables (one-point functions)
+  # @timeit time_machine "one-point functions" begin
+  #   Sx = expect(ψ, "Sx", sites = 1 : N)
+  #   Sy = -im * expect(ψ, "iSy", sites = 1 : N)
+  #   Sz = expect(ψ, "Sz", sites = 1 : N)
+  # end
 
-  # Measure spin correlation functions (two-point functions)
-  @timeit time_machine "two-point functions" begin
-    xxcorr = correlation_matrix(ψ, "Sx", "Sx", sites = 1 : N)
-    zzcorr = correlation_matrix(ψ, "Sz", "Sz", sites = 1 : N)
-    yycorr = -1.0 * correlation_matrix(ψ, "iSy", "iSy", sites = 1 : N)
-  end
+  # # Measure spin correlation functions (two-point functions)
+  # @timeit time_machine "two-point functions" begin
+  #   xxcorr = correlation_matrix(ψ, "Sx", "Sx", sites = 1 : N)
+  #   zzcorr = correlation_matrix(ψ, "Sz", "Sz", sites = 1 : N)
+  #   yycorr = -1.0 * correlation_matrix(ψ, "iSy", "iSy", sites = 1 : N)
+  # end
 
 
   # # Measure the expectation values of the plaquette operators (six-point correlators) around each hexagon
