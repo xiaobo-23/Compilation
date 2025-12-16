@@ -64,8 +64,7 @@ let
   lattice = interferometry_lattice_obc(Nx, Ny, N)
   number_of_bonds = length(lattice)
   
-  
-  println("\nPrinting the bonds on the interferometry lattice:")
+  println("\nPrinting bonds on the interferometry lattice:")
   for (idx, bond) in enumerate(lattice)
     @show bond.s1, bond.s2
   end
@@ -78,25 +77,26 @@ let
     Use these wedges to set up the three-spin interaction terms in the Hamiltonian
   """
 
-
   println(repeat("*", 100))
   println("Setting up the three-spin interaction on the interferometry lattice")
-  
   wedge = interferometry_wedge(Nx, Ny, N)
-  # number_of_wedges = length(wedge)
-  # @show number_of_wedges
-  # for (idx, tmp) in enumerate(wedge)
-  #   @show tmp.s1, tmp.s2, tmp.s3
-  # end 
-  # println(repeat("*", 200))
-  # println("")
+  number_of_wedges = length(wedge)
+
+  println("\nPrinting wedges on the interferometry lattice:")
+  for idx in 1:length(wedge)
+    if isassigned(wedge, idx)
+      tmp = wedge[idx]
+      @show idx, tmp.s1, tmp.s2, tmp.s3
+    end
+  end 
+  println("")
 
 
   """
     Construct the two-body interactions in the Hamiltonian
   """
   
-  println("\n", repeat("*", 100))
+  println(repeat("*", 100))
   println("Setting up two-body interactions in the Hamiltonian")
   
 
@@ -152,23 +152,23 @@ let
 				break
 			end
 		end
-    @show b.s1, x
+    # @show b.s1, x
 
 
     # Set up the two-body interaction terms based on the bond type
     if iseven(x)
       os .+= -effective_Jz, "Sz", b.s1, "Sz", b.s2
       zbond += 1
-      @info "Added Sz-Sz bond" term = ("Jz", effective_Jz, "Sz", b.s1, "Sz", b.s2)
+      # @info "Added Sz-Sz bond" term = ("Jz", effective_Jz, "Sz", b.s1, "Sz", b.s2)
     else
       if abs(b.s1 - b.s2) == Ny 
         os .+= -effective_Jx, "Sx", b.s1, "Sx", b.s2
         xbond += 1
-        @info "Added Sx-Sx bond" term = ("Jx", effective_Jx, "Sx", b.s1, "Sx", b.s2)
+        # @info "Added Sx-Sx bond" term = ("Jx", effective_Jx, "Sx", b.s1, "Sx", b.s2)
       elseif abs(b.s1 - b.s2) == Ny - 1
         os .+= -effective_Jy, "Sy", b.s1, "Sy", b.s2
         ybond += 1
-        @info "Added Sy-Sy bond" term = ("Jy", effective_Jy, "Sy", b.s1, "Sy", b.s2)
+        # @info "Added Sy-Sy bond" term = ("Jy", effective_Jy, "Sy", b.s1, "Sy", b.s2)
       end
     end
   end
@@ -182,6 +182,7 @@ let
   end
   println("")
  
+  
   # #***************************************************************************************************************
   # #***************************************************************************************************************
   # # Construct the three-spin interaction terms
@@ -276,8 +277,8 @@ let
 
   # println(repeat("*", 200))
   # println("")
-  # #***************************************************************************************************************
-  # #*************************************************************************************************************** 
+  #***************************************************************************************************************
+  #*************************************************************************************************************** 
   
   
   # #***************************************************************************************************************

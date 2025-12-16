@@ -225,8 +225,8 @@ function interferometry_wedge(Nx::Int, Ny::Int, Nsites::Int)
 	if Nsites != Nx * Ny - 6
 		error("The number of sites does not match the interferometry geometry!")
 	end
-	Nwedge = 3 * Nsites - 4 * (Ny - 1) - 2 * (Nx - 2) - 20
-	@info "Number of wedge bonds: $Nwedge"
+	Nwedge = 3 * Nsites - 4 * (Ny - 1) - 2 * (Nx - 2) - 12
+	# @info "Number of wedge bonds: $Nwedge"
 
 
 	# Construct the geometry profile dynamically based on Nx
@@ -274,8 +274,8 @@ function interferometry_wedge(Nx::Int, Ny::Int, Nsites::Int)
 			wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
 		else
 			if iseven(x)
-				if xcoordinate_gauge[x] == Ny 
-					if xcoordinate_gauge[x + 1] == Ny - 1
+				if geometry_profile[x] == Ny 
+					if geometry_profile[x + 1] == Ny - 1
 						if y == 1
 							wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
 						elseif y == Ny
@@ -288,7 +288,7 @@ function interferometry_wedge(Nx::Int, Ny::Int, Nsites::Int)
 					else
 						if y == 1
 							wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
-						elseif y == Ny 
+						elseif y == Ny
 							wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
 						else
 							wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
@@ -296,22 +296,22 @@ function interferometry_wedge(Nx::Int, Ny::Int, Nsites::Int)
 							wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
 						end
 					end 
-				elseif xcoordinate_gauge[x] == Ny - 1
+				elseif geometry_profile[x] == Ny - 1
 					wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
 					wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny - 1)
 					wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny - 1)
 				end
 			else
-				if xcoordinate_gauge[x] == Ny - 1
+				if geometry_profile[x] == Ny - 1
 					wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
 					wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny - 1)
 					wedge[b += 1] = WedgeBond(n + Ny - 1, n, n + Ny)
 				else
-					if xcoordinate_gauge[x - 1] == Ny
+					if geometry_profile[x - 1] == Ny
 						if y == 1
 							wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
 						elseif y == Ny 
-							wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
+							wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny - 1)
 						else
 							wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
 							wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny - 1)
@@ -333,7 +333,9 @@ function interferometry_wedge(Nx::Int, Ny::Int, Nsites::Int)
 		end
 	end
 	
-
-	# @show wedge
+	# Check the number of wedges that have been set up
+	if length(wedge) != Nwedge
+		error("The number of wedges that have been set up does not match the expected value!")
+	end
 	return wedge
 end
