@@ -187,72 +187,74 @@ let
   """
     Construct the three-body interactions in the Hamiltonian
   """
-  println(repeat("*", 200))
-  println("Setting up three-body interactions in the Hamiltonian")
-  
-  
-  wedge_count::Int = 0
-  for w in wedge
-    # if w.s2 == constriction₁[1] || w.s2 == constriction₁[2] || 
-    #   w.s2 == constriction₂[1] || w.s2 == constriction₂[2]
-    #   effective_κ = α * κ
-    # else
-    #   effective_κ = κ
-    # end
-    effective_κ = κ
-
+  if abs(κ) > 1e-8
+    println(repeat("*", 200))
+    println("Setting up three-body interactions in the Hamiltonian")
     
-    # Determine the x coordinate of the second site and use the second site as the anchor point 
-    x = 0
-		for idx in 1 : length(x_gauge) - 1
-			if w.s2 > x_gauge[idx] && w.s2 <= x_gauge[idx + 1]
-				x = idx
-				break
-			end
-		end
-    # @show w.s2, x
+    
+    wedge_count::Int = 0
+    for w in wedge
+      # if w.s2 == constriction₁[1] || w.s2 == constriction₁[2] || 
+      #   w.s2 == constriction₂[1] || w.s2 == constriction₂[2]
+      #   effective_κ = α * κ
+      # else
+      #   effective_κ = κ
+      # end
+      effective_κ = κ
 
-
-    if abs(w.s1 - w.s3) == 1
-      if isodd(x)
-        os .+= effective_κ, "Sy", w.s1, "Sz", w.s2, "Sx", w.s3
-        @info "Added three-spin term" term = ("Sy", w.s1, "Sz", w.s2, "Sx", w.s3, "kappa", effective_κ)
-      else
-        os .+= effective_κ, "Sx", w.s1, "Sz", w.s2, "Sy", w.s3
-        @info "Added three-spin term" term = ("Sx", w.s1, "Sz", w.s2, "Sy", w.s3, "kappa", effective_κ)
+      
+      # Determine the x coordinate of the second site and use the second site as the anchor point 
+      x = 0
+      for idx in 1 : length(x_gauge) - 1
+        if w.s2 > x_gauge[idx] && w.s2 <= x_gauge[idx + 1]
+          x = idx
+          break
+        end
       end
-      wedge_count += 1
-    else
-      if isodd(x)
-        if abs(w.s3 - w.s2) == Ny
-          os .+= effective_κ, "Sz", w.s1, "Sy", w.s2, "Sx", w.s3
-          @info "Added three-spin term" term = ("Sz", w.s1, "Sy", w.s2, "Sx", w.s3, "kappa", effective_κ)    
+      # @show w.s2, x
+
+      
+      if abs(w.s1 - w.s3) == 1
+        if isodd(x)
+          os .+= effective_κ, "Sy", w.s1, "Sz", w.s2, "Sx", w.s3
+          @info "Added three-spin term" term = ("Sy", w.s1, "Sz", w.s2, "Sx", w.s3, "kappa", effective_κ)
         else
-          os .+= effective_κ, "Sz", w.s1, "Sx", w.s2, "Sy", w.s3
-          @info "Added three-spin term" term = ("Sz", w.s1, "Sx", w.s2, "Sy", w.s3, "kappa", effective_κ)
+          os .+= effective_κ, "Sx", w.s1, "Sz", w.s2, "Sy", w.s3
+          @info "Added three-spin term" term = ("Sx", w.s1, "Sz", w.s2, "Sy", w.s3, "kappa", effective_κ)
         end
         wedge_count += 1
       else
-        if abs(w.s2 - w.s1) == Ny 
-          os .+= effective_κ, "Sx", w.s1, "Sy", w.s2, "Sz", w.s3 
-          @info "Added three-spin term" term = ("Sx", w.s1, "Sy", w.s2, "Sz", w.s3, "kappa", effective_κ)
+        if isodd(x)
+          if abs(w.s3 - w.s2) == Ny
+            os .+= effective_κ, "Sz", w.s1, "Sy", w.s2, "Sx", w.s3
+            @info "Added three-spin term" term = ("Sz", w.s1, "Sy", w.s2, "Sx", w.s3, "kappa", effective_κ)    
+          else
+            os .+= effective_κ, "Sz", w.s1, "Sx", w.s2, "Sy", w.s3
+            @info "Added three-spin term" term = ("Sz", w.s1, "Sx", w.s2, "Sy", w.s3, "kappa", effective_κ)
+          end
+          wedge_count += 1
         else
-          os .+= effective_κ, "Sy", w.s1, "Sx", w.s2, "Sz", w.s3
-          @info "Added three-spin term" term = ("Sy", w.s1, "Sx", w.s2, "Sz", w.s3, "kappa", effective_κ)
+          if abs(w.s2 - w.s1) == Ny 
+            os .+= effective_κ, "Sx", w.s1, "Sy", w.s2, "Sz", w.s3 
+            @info "Added three-spin term" term = ("Sx", w.s1, "Sy", w.s2, "Sz", w.s3, "kappa", effective_κ)
+          else
+            os .+= effective_κ, "Sy", w.s1, "Sx", w.s2, "Sz", w.s3
+            @info "Added three-spin term" term = ("Sy", w.s1, "Sx", w.s2, "Sz", w.s3, "kappa", effective_κ)
+          end
+          wedge_count += 1
         end
-        wedge_count += 1
       end
     end
-  end
-  
+    
 
-  # Check to make sure the number of three-spin interaction terms is correct
-  println("\nChecking the number of three-spin interaction terms in the Hamiltonian:")
-  @show wedge_count
-  if wedge_count != 122
-    error("The number of three-spin interaction terms is incorrect!")
+    # Check to make sure the number of three-spin interaction terms is correct
+    println("\nChecking the number of three-spin interaction terms in the Hamiltonian:")
+    @show wedge_count
+    if wedge_count != 122
+      error("The number of three-spin interaction terms is incorrect!")
+    end
+    println("")
   end
-  println("")
   #***************************************************************************************************************
   #*************************************************************************************************************** 
   
@@ -274,7 +276,7 @@ let
   
   
   # Set up hyperparameters used in the DMRG simulations, including bond dimensions, cutoff etc.
-  nsweeps = 2
+  nsweeps = 20
   maxdim  = [20, 60, 100, 500, 800, 1000]
   cutoff  = [1E-10]
   eigsolve_krylovdim = 50
@@ -289,8 +291,8 @@ let
 
   # Construct a custom observer and stop the DMRG calculation early if criteria are met
   custom_observer = CustomObserver()
-  @show custom_observer.etolerance
-  @show custom_observer.minsweeps
+  # @show custom_observer.etolerance
+  # @show custom_observer.minsweeps
   @timeit time_machine "dmrg simulation" begin
     energy, ψ = dmrg(H, ψ₀; nsweeps, maxdim, cutoff, eigsolve_krylovdim, observer = custom_observer)
   end
@@ -300,6 +302,8 @@ let
   #***************************************************************************************************************
   #***************************************************************************************************************
 
+  
+  
   #***************************************************************************************************************
   #***************************************************************************************************************
   """
@@ -332,6 +336,8 @@ let
   plaquette = Vector{String}(["Z", "iY", "X", "Z", "iY", "X"])
 
 
+  # Define the indices of sites for each plaquette (hexagon) on the interferometry lattice
+  # TO-DO: convert this part into a fcuntion that can generate plaquette indices dynamically
   plaquette_indices = [
     1 5 9 12 8 4;
     2 6 10 13 9 5;
@@ -373,23 +379,8 @@ let
     plaquette_vals[idx] = -1.0 * real(inner(ψ', W, ψ))
   end
 
-  println("The expectation values of the plaquette operators on each hexagon are:")
-  for idx in 1:nplaquettes
-    println("Plaquette $idx : ", plaquette_vals[idx])
-  end
-  println("")
-  # ***************************************************************************************************************
-  # ***************************************************************************************************************
   
-
-
-  # #***************************************************************************************************************
-  # #***************************************************************************************************************
-  # println(repeat("*", 200))
-  # println("Summary of results:")
-  # println("")
-
-  # # Check the variance of the energy
+  # Check the variance of the energy
   # @timeit time_machine "compaute the variance" begin
   #   H2 = inner(H, ψ, H, ψ)
   #   E₀ = inner(ψ', H, ψ)
@@ -397,11 +388,24 @@ let
   # end
   # println("Variance of the energy is $variance")
   # println("")
+  # ***************************************************************************************************************
+  # ***************************************************************************************************************
   
-  # # Check the expectation values of the plaquette operators
-  # println("Expectation values of the plaquette operators:")
-  # @show plaquette_vals
-  # println("")
+
+  
+  # #***************************************************************************************************************
+  # #***************************************************************************************************************
+  println(repeat("*", 100))
+  println("Summary of results:")
+  println("")
+
+   
+  println("The expectation values of the plaquette operators on each hexagon are:")
+  for idx in 1:nplaquettes
+    println("Plaquette $idx : ", plaquette_vals[idx])
+  end
+  println("")
+  @show linkdims(ψ) 
 
   # # Check one-point functions
   # println("Expectation values of one-point functions <Sx>, <Sy>, and <Sz>:")
@@ -409,31 +413,25 @@ let
   # @show Sy
   # @show Sz
 
-  # println(repeat("*", 200))
-  # println("")
-  # #***************************************************************************************************************
-  # #***************************************************************************************************************
-
   
-  # @show time_machine
-  # h5open("data/interferometry_kappa$(κ).h5", "cw") do file
-  #   write(file, "psi", ψ)
-  #   write(file, "E0", energy)
-  #   write(file, "E0variance", variance)
-  #   write(file, "Ehist", custom_observer.ehistory)
-  #   write(file, "Bond", custom_observer.chi)
-  #   # write(file, "Entropy", SvN)
-  #   write(file, "Sx0", Sx₀)
-  #   write(file, "Sx",  Sx)
-  #   write(file, "Cxx", xxcorr)
-  #   write(file, "Sy0", Sy₀)
-  #   write(file, "Sy", Sy)
-  #   write(file, "Cyy", yycorr)
-  #   write(file, "Sz0", Sz₀)
-  #   write(file, "Sz",  Sz)
-  #   write(file, "Czz", zzcorr)
-  #   write(file, "Plaquette", plaquette_vals)
-  # end
+  println(header)
+  println(header)
+  println("") 
+  #***************************************************************************************************************
+  #***************************************************************************************************************
+
+  """
+    Save the ground-state wavefunction and various observables to an HDF5 file
+  """
+  h5open("data/interferometry_kappa$(κ).h5", "cw") do file
+    write(file, "psi", ψ)
+    write(file, "E0", energy)
+    # write(file, "E0variance", variance)
+    # write(file, "Ehist", custom_observer.ehistory)
+    # write(file, "Bond", custom_observer.chi)
+    write(file, "chi", linkdims(ψ))
+    write(file, "plaquette", plaquette_vals)
+  end
 
   return
 end
