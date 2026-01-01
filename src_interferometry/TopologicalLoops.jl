@@ -57,7 +57,8 @@ function LoopList_RightTwist(input_Nx:: Int, input_Ny:: Int, ordering_scheme:: S
 end
 
 
-function PlaquetteList(input_Nx:: Int, input_Ny:: Int, ordering_scheme:: String, PBC_in_x:: Bool)
+
+function PlaquetteListInterferometry(input_Nx::Int, input_Ny::Int, ordering_scheme::String, PBC_in_x::Bool)
     # '''
     #     Assume using periodic boundary condition in y direction 
     #     Implement the list of plaquettes for open boundary condition in x direction
@@ -65,119 +66,45 @@ function PlaquetteList(input_Nx:: Int, input_Ny:: Int, ordering_scheme:: String,
     #     Ny: the number of unit cells in the y direction
     # '''
 
-    if ordering_scheme != "rings"
-        error("Ordering scheme not supported!")
-    end
+    println("\nGenerate the list of indices for all hexagons to compute the expectation values of plaquette operators\n")
+    ordering_scheme == "rings" || error("Ordering scheme not supported!")
 
     if ordering_scheme == "rings" && PBC_in_x == false
-        number_of_plaquettes = (input_Nx - 1) * input_Ny
-        tmp_list = Matrix{Int64}(undef, number_of_plaquettes, 6)
+        Ntotal = (input_Nx - 1) * input_Ny
+        tmp_list = Matrix{Int64}(undef, Ntotal, 6)
 
-        for index in 1 : number_of_plaquettes
+        for index in 1 : Ntotal
             x_index = div(index - 1, input_Ny) + 1
             y_index = mod(index - 1, input_Ny) + 1
-            site_index = 2 * (x_index - 1) * input_Ny + y_index
-            if y_index == 1
-                symmetric_site_index = site_index + 2 * input_Ny - 1
-            else
-                symmetric_site_index = site_index + input_Ny - 1
-            end
-            # @show index, x_index, y_index, site_index, symmetric_site_index
             
-            tmp_list[index, 1] = site_index
-            tmp_list[index, 2] = site_index + input_Ny
-            tmp_list[index, 3] = site_index + 2 * input_Ny
-            tmp_list[index, 4] = symmetric_site_index
-            tmp_list[index, 5] = symmetric_site_index + input_Ny
-            tmp_list[index, 6] = symmetric_site_index + 2 * input_Ny
-        end
-    elseif ordering_scheme == "rings" && PBC_in_x == true
-       error("Periodic boundary condition in x direction needs to be implemented!")
-    end     
+            reference = 2 * (x_index - 1) * input_Ny + y_index
 
-    return tmp_list
-end
-
-
-function PlaquetteListReordering(input_Nx:: Int, input_Ny:: Int, ordering_scheme:: String, PBC_in_x:: Bool, input_seeds:: Array{Int64, 1})
-    # '''
-    #     Assume using periodic boundary condition in y direction 
-    #     Implement the list of plaquettes for open boundary condition in x direction
-    #     Nx: the number of unit cells in the x direction
-    #     Ny: the number of unit cells in the y direction
-    # '''
-
-    if ordering_scheme != "rings"
-        error("Ordering scheme not supported!")
-    end
-
-    if ordering_scheme == "rings" && PBC_in_x == false
-        number_of_plaquettes = (input_Nx - 1) * input_Ny
-        tmp_list = Matrix{Int64}(undef, number_of_plaquettes, 6)
-
-        for index in 1 : number_of_plaquettes
-            coordinate = input_seeds[index]
-            tmp_list[index, 1] = coordinate
-            tmp_list[index, 2] = coordinate + input_Ny
-            tmp_list[index, 3] = coordinate + 2 * input_Ny
-            if coordinate == input_Ny || mod(coordinate - input_Ny, 2 * input_Ny) == 0
-                tmp_list[index, 4] = coordinate + 1 
-                tmp_list[index, 5] = coordinate + input_Ny + 1
-                tmp_list[index, 6] = coordinate + 2 * input_Ny + 1
+            if x_index == 1
+                if y_index == input_Ny
+                    ref₁ = reference + Ny + 1
+                    ref₂ = reference + 1
+                else
+                    ref₁ = reference + 2 * input_Ny + 1
+                    ref₂ = reference + input_Ny + 1
+                end
+                tmp_list[index, 1] = reference
+                tmp_list[index, 2] = reference + input_Ny
+                tmp_list[index, 3] = reference + 2 * input_Ny
+                tmp_list[index, 4] = reference + 3 * input_Ny
+                tmp_list[index, 5] = ref₁
+                tmp_list[index, 6] = ref₂
             else
-                tmp_list[index, 4] = coordinate + input_Ny + 1 
-                tmp_list[index, 5] = coordinate + 2 * input_Ny + 1
-                tmp_list[index, 6] = coordinate + 3 * input_Ny + 1
-            end 
-            
-        end
-    elseif ordering_scheme == "rings" && PBC_in_x == true
-       error("Periodic boundary condition in x direction needs to be implemented!")
-    end     
-
-    return tmp_list
-end
-
-
-function PlaquetteList_RightTwist(input_Nx:: Int, input_Ny:: Int, ordering_scheme:: String, PBC_in_x:: Bool)
-    # '''
-    #     Assume using periodic boundary condition in y direction 
-    #     Implement the list of plaquettes for open boundary condition in x direction
-    #     Nx: the number of unit cells in the x direction
-    #     Ny: the number of unit cells in the y direction
-    # '''
-
-    println("")
-    println("Generate the list of indices for plaquettes with twisted boundary condition in the y direction")
-    println("")
-    
-    if ordering_scheme != "rings"
-        error("Ordering scheme not supported!")
-    end
-
-    if ordering_scheme == "rings" && PBC_in_x == false
-        number_of_plaquettes = (input_Nx - 1) * input_Ny - 1
-        tmp_list = Matrix{Int64}(undef, number_of_plaquettes, 6)
-
-        for index in 2 : number_of_plaquettes + 1
-            x_index = div(index - 1, input_Ny) + 1
-            y_index = mod(index - 1, input_Ny) + 1
-            site_index = 2 * (x_index - 1) * input_Ny + y_index
-            if y_index == 1
-                symmetric_site_index = site_index - 1
-            else
-                symmetric_site_index = site_index + input_Ny - 1
+                next_ref = reference + (y_index != 1 ? input_Ny - 1 : 2 * input_Ny - 1)
+                tmp_list[index, 1] = reference
+                tmp_list[index, 2] = next_ref
+                tmp_list[index, 3] = next_ref + input_Ny
+                tmp_list[index, 4] = next_ref + 2 * input_Ny
+                tmp_list[index, 5] = reference + 2 * input_Ny
+                tmp_list[index, 6] = reference + input_Ny
             end
-
-            tmp_list[index - 1, 1] = site_index
-            tmp_list[index - 1, 2] = site_index + input_Ny
-            tmp_list[index - 1, 3] = site_index + 2 * input_Ny
-            tmp_list[index - 1, 4] = symmetric_site_index
-            tmp_list[index - 1, 5] = symmetric_site_index + input_Ny
-            tmp_list[index - 1, 6] = symmetric_site_index + 2 * input_Ny
         end
     elseif ordering_scheme == "rings" && PBC_in_x == true
-       error("Periodic boundary condition in x direction needs to be implemented!")
+       error("Functions to generate the list of indices under PBC along x direction hasn't been implemented!")
     end     
     # @show tmp_list
     return tmp_list
@@ -240,7 +167,6 @@ function PlaquetteListArmchair(inputNx:: Int, inputNy:: Int, geometery:: String,
     @show plaquette
     return plaquette 
 end
-
 
 
 function LoopListArmchair(inputNx:: Int, inputNy:: Int, ordering_geometery:: String, direction:: String)
