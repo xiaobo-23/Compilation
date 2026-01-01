@@ -13,8 +13,6 @@ using TimerOutputs
 
 include("interferometry_lattice.jl")
 include("interferometry_plaquettes.jl")
-include("Entanglement.jl")
-include("TopologicalLoops.jl")
 include("CustomObserver.jl")
 
 
@@ -38,8 +36,9 @@ const Jx::Float64 = 1.0
 const Jy::Float64 = 1.0 
 const Jz::Float64 = 1.0 
 const κ::Float64 = -0.8
-# const h::Float64 = 0.0
 const time_machine = TimerOutput()  # Timing and profiling
+
+
 
 
 let
@@ -47,8 +46,7 @@ let
   #***************************************************************************************************************
   """
     Obtain the ground state of the interferometry setup using DMRG
-  """
-
+  """  
   header = repeat('#', 200)
   println(header)
   println(header)
@@ -57,15 +55,16 @@ let
   println("")
   
   
+  
   """
     Set up the bonds on the interferometry lattice
     Use these bonds to set up the two-body Kitaev interactions in the Hamiltonian
   """
-  
   println(repeat("*", 100))
   println("Setting up the bonds on the interferometry lattice")
   lattice = interferometry_lattice_obc(Nx, Ny, N)
   number_of_bonds = length(lattice)
+  
   
   println("\nPrinting bonds on the interferometry lattice:")
   for (idx, bond) in enumerate(lattice)
@@ -74,11 +73,11 @@ let
   println("")
   
   
+  
   """
     Set up the wedges on the interferometry lattice
     Use these wedges to set up the three-spin interaction terms in the Hamiltonian
   """
-
   println(repeat("*", 100))
   println("Setting up the three-spin interaction on the interferometry lattice")
   wedge = interferometry_wedge(Nx, Ny, N)
@@ -94,21 +93,20 @@ let
   println("")
 
 
+  #***************************************************************************************************************
   """
     Construct the two-body interactions in the Hamiltonian
   """
-  
   println(repeat("*", 100))
   println("Setting up two-body interactions in the Hamiltonian")
   
-
   # Define the constrictions on the interferometry lattice
   constriction₁ = [17, 20]
   constriction₂ = [39, 42]
   α = 4     # A scaling factor to make the interaction on the constriction stronger 
 
 
-  # Set up the width profile and gauge to set up the x and y coordinates for each lattice site
+  # Set up the width and gauge profiles so that we can compute the x and y coordinates for each lattice point
   width_profile = Int[]
 	for i in 1:5
 		append!(width_profile, [3, 4, 4])
@@ -120,10 +118,11 @@ let
   for idx in 0:length(width_profile)
 		append!(x_gauge, sum(width_profile[1:idx]))
 	end
-  println("\nThe gauge for x coordinates of each lattice site is:")
-  @show x_gauge
+  # println("\nThe gauge for x coordinates of each lattice site is:")
+  # @show x_gauge
 
-
+  
+  
   # Set up counters for different types of bonds 
   xbond::Int = 0
   ybond::Int = 0
@@ -173,7 +172,7 @@ let
     end
   end
   
-  
+
   # Check whether the sum of all types of bonds is equal to the total number of bonds
   println("\nChecking the number of bonds in the Hamiltonian:")
   @show xbond, ybond, zbond, number_of_bonds
@@ -181,9 +180,10 @@ let
     error("The number of bonds in the Hamiltonian is not correct!")
   end
   println("")
+  #***************************************************************************************************************
  
   
-  #***************************************************************************************************************
+  
   #***************************************************************************************************************
   """
     Construct the three-body interactions in the Hamiltonian
@@ -257,7 +257,6 @@ let
     println("")
   end
   #***************************************************************************************************************
-  #*************************************************************************************************************** 
   
   
   #***************************************************************************************************************
@@ -546,4 +545,7 @@ let
   # end
 
   return
+
+
+
 end
