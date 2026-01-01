@@ -36,7 +36,7 @@ const N = 58  # Total number of sites after removing sites for interferometry
 const Jx::Float64 = 1.0
 const Jy::Float64 = 1.0 
 const Jz::Float64 = 1.0 
-const κ::Float64 = -0.2
+const κ::Float64 = -0.8
 # const h::Float64 = 0.0
 const time_machine = TimerOutput()  # Timing and profiling
 
@@ -66,10 +66,10 @@ let
   lattice = interferometry_lattice_obc(Nx, Ny, N)
   number_of_bonds = length(lattice)
   
-  # println("\nPrinting bonds on the interferometry lattice:")
-  # for (idx, bond) in enumerate(lattice)
-  #   @show bond.s1, bond.s2
-  # end
+  println("\nPrinting bonds on the interferometry lattice:")
+  for (idx, bond) in enumerate(lattice)
+    @show idx, bond.s1, bond.s2
+  end
   println("")
   
   
@@ -276,7 +276,7 @@ let
   
   
   # Set up hyperparameters used in the DMRG simulations, including bond dimensions, cutoff etc.
-  nsweeps = 20
+  nsweeps = 2
   maxdim  = [20, 60, 100, 500, 800, 1000]
   cutoff  = [1E-10]
   eigsolve_krylovdim = 50
@@ -380,6 +380,60 @@ let
   end
 
   
+  # Check the energy per bond
+  # Loop through all the bonds in the lattice to set up the two-body interactions 
+  xbond = 0
+  ybond = 0
+  zbond = 0
+
+  for b in lattice
+    if (b.s1 == constriction₁[1] && b.s2 == constriction₁[2]) || (b.s1 == constriction₁[2] && b.s2 == constriction₁[1]) || 
+       (b.s1 == constriction₂[1] && b.s2 == constriction₂[2]) || (b.s1 == constriction₂[2] && b.s2 == constriction₂[1])
+      effective_Jx = α * Jx
+      effective_Jy = α * Jy
+      effective_Jz = α * Jz
+    else
+      effective_Jx = Jx
+      effective_Jy = Jy
+      effective_Jz = Jz
+    end
+
+    # Determine x coordinate of the first site in the bond
+    x = 0
+		for idx in 1 : length(x_gauge) - 1
+			if b.s1 > x_gauge[idx] && b.s1 <= x_gauge[idx + 1]
+				x = idx
+				break
+			end
+		end
+    # @show b.s1, x
+
+
+    tmp_os = OpSum()
+    # Set up the two-body interaction terms based on the bond type
+    if iseven(x)
+      tmp_os .+= -effective_Jz, "Sz", b.s1, "Sz", b.s2
+      zbond += 1
+      # @info "Added Sz-Sz bond" term = ("Jz", effective_Jz, "Sz", b.s1, "Sz", b.s2)
+    else
+      if abs(b.s1 - b.s2) == Ny 
+        tmp_os .+= -effective_Jx, "Sx", b.s1, "Sx", b.s2
+        xbond += 1
+        # @info "Added Sx-Sx bond" term = ("Jx", effective_Jx, "Sx", b.s1, "Sx", b.s2)
+      elseif abs(b.s1 - b.s2) == Ny - 1
+        tmp_os .+= -effective_Jy, "Sy", b.s1, "Sy", b.s2
+        ybond += 1
+        # @info "Added Sy-Sy bond" term = ("Jy", effective_Jy, "Sy", b.s1, "Sy", b.s2)
+      end
+    end
+
+    tmp_H = MPO(tmp_os, sites)
+    E₀_bond = inner(ψ', tmp_H, ψ)
+    @show b.s1, b.s2, E₀_bond
+  end
+  
+
+
   # Check the variance of the energy
   # @timeit time_machine "compaute the variance" begin
   #   H2 = inner(H, ψ, H, ψ)
@@ -406,6 +460,7 @@ let
   end
   println("")
   @show linkdims(ψ) 
+  println("")
 
   # # Check one-point functions
   # println("Expectation values of one-point functions <Sx>, <Sy>, and <Sz>:")
@@ -413,25 +468,24 @@ let
   # @show Sy
   # @show Sz
 
-  
   println(header)
   println(header)
-  println("") 
+  println("")
   #***************************************************************************************************************
   #***************************************************************************************************************
 
-  """
-    Save the ground-state wavefunction and various observables to an HDF5 file
-  """
-  h5open("data/interferometry_kappa$(κ).h5", "cw") do file
-    write(file, "psi", ψ)
-    write(file, "E0", energy)
-    # write(file, "E0variance", variance)
-    # write(file, "Ehist", custom_observer.ehistory)
-    # write(file, "Bond", custom_observer.chi)
-    write(file, "chi", linkdims(ψ))
-    write(file, "plaquette", plaquette_vals)
-  end
+  # """
+  #   Save the ground-state wavefunction and various observables to an HDF5 file
+  # """
+  # h5open("data/interferometry_kappa$(κ).h5", "cw") do file
+  #   write(file, "psi", ψ)
+  #   write(file, "E0", energy)
+  #   # write(file, "E0variance", variance)
+  #   # write(file, "Ehist", custom_observer.ehistory)
+  #   # write(file, "Bond", custom_observer.chi)
+  #   write(file, "chi", linkdims(ψ))
+  #   write(file, "plaquette", plaquette_vals)
+  # end
 
   return
 end
