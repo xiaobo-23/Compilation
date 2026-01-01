@@ -1,30 +1,31 @@
 # Generate the reference indices for the plaquettes in the interferometry lattice
-function interferometry_plaquette_reference_obc(input_sites::Int, input_length::Int)
+function interferometry_plaquette_reference_obc(input_sites::Int, input_length::Int, 
+	input_width::Vector{Int}=Int[], input_gauge::Vector{Int}=Int[])
 	"""
 		Generate a list of site indices as the reference points for the plaquettes 
 		in the interferometry lattice with open boundary conditions
 	"""
 
 
-	# Set up the width profile and gauge to set up the x and y coordinates for each lattice site
-	input_width = Int[]
-	for i in 1:5
-		append!(input_width, [3, 4, 4])
-	end
-	push!(input_width, 3)
-	println("\nThe width profile for the interferometry lattice is:")
-	@show input_width
-	println("")
+	# # Set up the width profile and gauge to set up the x and y coordinates for each lattice site
+	# input_width = Int[]
+	# for i in 1:5
+	# 	append!(input_width, [3, 4, 4])
+	# end
+	# push!(input_width, 3)
+	# println("\nThe width profile for the interferometry lattice is:")
+	# @show input_width
+	# println("")
 
 	
-	# Set up the gauge to determine the x coordinates of each lattice site
-	input_gauge = Int[]
-	for idx in 0:length(input_width)
-		append!(input_gauge, sum(input_width[1:idx]))
-	end
-	println("\nThe gauge for x coordinates of each lattice site is:")
-	@show input_gauge
-	println("")
+	# # Set up the gauge to determine the x coordinates of each lattice site
+	# input_gauge = Int[]
+	# for idx in 0:length(input_width)
+	# 	append!(input_gauge, sum(input_width[1:idx]))
+	# end
+	# println("\nThe gauge for x coordinates of each lattice site is:")
+	# @show input_gauge
+	# println("")
 
 
 	# Loop through all the sites and select the sites that can be used as the reference points for plaquettes
@@ -50,10 +51,10 @@ function interferometry_plaquette_reference_obc(input_sites::Int, input_length::
 				end
 			end
 		end
-		@show site_idx, x, y
+		# @show site_idx, x, y
 
 
-		# Determine if the site can be used as a reference point and push it into the list
+		# Determine if the site can be used as a reference point based on its (x, y) coordinates
 		if mod(x, 2) == 1 && x < 2*input_length - 1
 			if input_width[x] == 3
 				push!(plaquette_refs, site_idx)
@@ -77,33 +78,11 @@ end
 
 
 
-function interferometry_plaquette_obc()
+function interferometry_plaquette_obc(input_width::Vector{Int}=Int[], input_gauge::Vector{Int}=Int[], input_refs::Vector{Int}=Int[])
 	"""
 		Generate a list of site indices for each plaquette in the interferometry lattice 
 	"""
-
-	# Set up the width profile and gauge to set up the x and y coordinates for each lattice site
-	input_width = Int[]
-	for i in 1:5
-		append!(input_width, [3, 4, 4])
-	end
-	push!(input_width, 3)
-	println("\nThe width profile for the interferometry lattice is:")
-	@show input_width
-	println("")
-
-	
-	# Set up the gauge to determine the x coordinates of each lattice site
-	input_gauge = Int[]
-	for idx in 0:length(input_width)
-		append!(input_gauge, sum(input_width[1:idx]))
-	end
-	println("\nThe gauge for x coordinates of each lattice site is:")
-	@show input_gauge
-	println("")
-
-
-	input_refs = Int[1, 2, 3, 9, 10, 17, 18, 23, 24, 25, 31, 32, 39, 40, 45, 46, 47]
+	# Initialize the plaquette matrix 
 	plaquette = Matrix{Int}(undef, length(input_refs), 6)
 
 	
@@ -117,6 +96,7 @@ function interferometry_plaquette_obc()
 			end
 		end
 
+		# Construct indices for the plaquette based on the reference site
 		plaquette[idx, 1] = reference
 		plaquette[idx, 2] = reference + 4
 		plaquette[idx, 6] = reference + 3
@@ -133,12 +113,7 @@ function interferometry_plaquette_obc()
 	end
 	
 	show(IOContext(stdout, :limit => false), "text/plain", plaquette)
-	println()
-	# return plaquette
+	println("")
+	
+	return plaquette
 end
-
-# interferometry_plaquette_reference_obc(58, 8)
-
-
-
-interferometry_plaquette_obc()

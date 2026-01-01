@@ -12,6 +12,7 @@ using TimerOutputs
 
 
 include("interferometry_lattice.jl")
+include("interferometry_plaquettes.jl")
 include("Entanglement.jl")
 include("TopologicalLoops.jl")
 include("CustomObserver.jl")
@@ -329,36 +330,22 @@ let
     Measure the expectation values of the plaquette operators (six-point correlators) on each hexagon
   """
 
-  # Set up the plaquette operators and corresponding indices for all hexagons
   println(repeat("*", 100))
   println("Measuring the expectation values of the plaquette operators on each hexagon")
+
+  # Set up the plaquette operators 
   plaquette = Vector{String}(["Z", "iY", "X", "Z", "iY", "X"])
 
 
-  # Define the indices of sites for each plaquette (hexagon) on the interferometry lattice
-  # TO-DO: convert this part into a fcuntion that can generate plaquette indices dynamically
-  plaquette_indices = [
-    1 5 9 12 8 4;
-    2 6 10 13 9 5;
-    3 7 11 14 10 6;
-    9 13 16 19 15 12;
-    10 14 17 20 16 13;
-    17 21 24 27 23 20;
-    18 22 25 28 24 21;
-    23 27 31 34 30 26;
-    24 28 32 35 31 27;
-    25 29 33 36 32 28;
-    31 35 38 41 37 34;
-    32 36 39 42 38 35;
-    39 43 46 49 45 42;
-    40 44 47 50 46 43;
-    45 49 53 56 52 48;
-    46 50 54 57 53 49;
-    47 51 55 58 54 50
-  ]
-  # plaquette_inds = PlaquetteListInterferometry(Nx_unit, Ny_unit, "rings", false)
+  # Set up a list of indices for each plaquette on the interferometry lattice 
+  plaquette_refs = interferometry_plaquette_reference_obc(N, Nx_unit, width_profile, x_gauge) # Step 1: set up all the reference points
+  # @show plaquette_refs
+  # println("")
+
+  plaquette_indices = interferometry_plaquette_obc(width_profile, x_gauge, plaquette_refs)  # Step 2: set up the indices for each plaquette based on the reference points
 
 
+  # Compute the expectation values of the plaquette operators on each hexagon
   nplaquettes = size(plaquette_indices, 1)
   plaquette_vals = zeros(Float64, nplaquettes)
   for idx in 1:nplaquettes
@@ -379,10 +366,12 @@ let
   end
 
   
-  Etotal = 0.0
+  
   """
     Compute the contribution to the ground-state energy from each bond
   """
+  Etotal = 0.0
+
 
   # Loop through all the bonds in the lattice and measure the energy densities associated with each bond 
   E_bond = []
@@ -407,7 +396,6 @@ let
 			end
 		end
     # @show b.s1, x
-
     
     # Set up the two-body interaction terms based on the bond type
     tmp_os = OpSum()
@@ -479,11 +467,12 @@ let
       end
     end
 
+    
     # Set up the MPO for the three-spin term and compute its energy contribution
     tmp_H = MPO(tmp_os, sites)    
     tmp_E = inner(ψ', tmp_H, ψ)
     @show w.s1, w.s2, w.s3, tmp_E
-    push!(E_wedge, [w.s1, w.s2, w.s3, tmp_E])
+    push!(E_wedge, [w.s1, w.s2, w.s3, real(tmp_E)])
     Etotal += tmp_E
   end  
   println("")
