@@ -63,26 +63,28 @@ const Lattice = Vector{LatticeBond}
 
 
 
-function interferometry_lattice_obc(Nx::Int, Ny::Int, Nsites::Int)::Lattice
+function interferometry_lattice_obc(Nx::Int, Ny::Int, Nsites::Int, geometry_profile::Vector{Int})::Lattice
 	"""
 		Setting up all bonds on the lattice in the interferometry
 		Nx is the number of columns and is an even number 
 	"""
+	
 	# The default is open boundary condition along both the x and y directions
 	# Set up the number of sites and the number of bonds
 	if Nsites != Nx * Ny - 6
 		error("The number of sites does not match the interferometry geometry!")
 	end
 	Nbond = (div(Nx, 2) - 1) * 11 - 3
+	# @info "Number of bonds: $Nbond"
 
-
+	
 	# Construct the geometry profile dynamically based on Nx
-	# geometry_profile = Int[3, 4, 4, 3, 4, 4, 3, 4, 4, 3, 4, 4, 3, 4, 4, 3]
-	geometry_profile = Int[]
-	for i in 1:5
-		append!(geometry_profile, [3, 4, 4])
-	end
-	push!(geometry_profile, 3)
+	geometry_profile = Int[3, 4, 4, 4, 4, 4, 4, 3, 4, 4, 3, 4, 4, 3, 4, 4, 3, 4, 4, 4, 4, 4, 4, 3]
+	# geometry_profile = Int[]
+	# for i in 1:5
+	# 	append!(geometry_profile, [3, 4, 4])
+	# end
+	# push!(geometry_profile, 3)
 	
 
 	# Obtain an array to gaue the x coordinates of each lattice point
@@ -226,15 +228,16 @@ function interferometry_wedge(Nx::Int, Ny::Int, Nsites::Int)
 		error("The number of sites does not match the interferometry geometry!")
 	end
 	Nwedge = 3 * Nsites - 4 * (Ny - 1) - 2 * (Nx - 2) - 12
-	# @info "Number of wedge bonds: $Nwedge"
+	@info "Number of wedge bonds: $Nwedge"
 
 
 	# Construct the geometry profile dynamically based on Nx
-	geometry_profile = Int[]
-	for i in 1:5
-		append!(geometry_profile, [3, 4, 4])
-	end
-	push!(geometry_profile, 3)
+	geometry_profile = Int[3, 4, 4, 4, 4, 4, 4, 3, 4, 4, 3, 4, 4, 3, 4, 4, 3, 4, 4, 4, 4, 4, 4, 3]
+	# geometry_profile = Int[]
+	# for i in 1:5
+	# 	append!(geometry_profile, [3, 4, 4])
+	# end
+	# push!(geometry_profile, 3)
 	
 
 	# Obtain an array to gaue the x coordinates of each lattice point
@@ -337,5 +340,7 @@ function interferometry_wedge(Nx::Int, Ny::Int, Nsites::Int)
 	if length(wedge) != Nwedge
 		error("The number of wedges that have been set up does not match the expected value!")
 	end
+	
+	@show wedge
 	return wedge
 end

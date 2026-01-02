@@ -25,11 +25,11 @@ OMP_NUM_THREADS = 8
 
 
 # Set up the interferometry system with two constrictions
-const Nx_unit = 8
+const Nx_unit = 12
 const Ny_unit = 3
 const Nx = 2 * Nx_unit
 const Ny = Ny_unit + 1
-const N = 58  # Total number of sites after removing sites for interferometry
+const N = 90  # Total number of sites after removing sites for interferometry
 
 
 const Jx::Float64 = 1.0
@@ -37,7 +37,6 @@ const Jy::Float64 = 1.0
 const Jz::Float64 = 1.0 
 const κ::Float64 = -0.8
 const time_machine = TimerOutput()  # Timing and profiling
-
 
 
 
@@ -62,7 +61,24 @@ let
   """
   println(repeat("*", 100))
   println("Setting up the bonds on the interferometry lattice")
-  lattice = interferometry_lattice_obc(Nx, Ny, N)
+
+  # Define the constrictions on the interferometry lattice
+  # Set up the width and gauge profiles so that we can compute the x and y coordinates for each lattice point
+  # constriction₁ = [17, 20]
+  # constriction₂ = [39, 42]
+  
+  # width_profile = Int[]
+	# for i in 1:5
+	# 	append!(width_profile, [3, 4, 4])
+	# end
+	# push!(width_profile, 3)
+  
+  constriction₁ = [33, 36]
+  constriction₂ = [55, 58]
+  width_profile = Int[3, 4, 4, 4, 4, 4, 4, 3, 4, 4, 3, 4, 4, 3, 4, 4, 3, 4, 4, 4, 4, 4, 4, 3]
+
+
+  lattice = interferometry_lattice_obc(Nx, Ny, N, width_profile)
   number_of_bonds = length(lattice)
   
   
@@ -100,20 +116,10 @@ let
   println(repeat("*", 100))
   println("Setting up two-body interactions in the Hamiltonian")
   
-  # Define the constrictions on the interferometry lattice
-  constriction₁ = [17, 20]
-  constriction₂ = [39, 42]
-  α = 4     # A scaling factor to make the interaction on the constriction stronger 
+  # A scaling factor to make the interaction on the constriction stronger 
+  α = 4   
 
 
-  # Set up the width and gauge profiles so that we can compute the x and y coordinates for each lattice point
-  width_profile = Int[]
-	for i in 1:5
-		append!(width_profile, [3, 4, 4])
-	end
-	push!(width_profile, 3)
-
-  
   x_gauge = Int[]
   for idx in 0:length(width_profile)
 		append!(x_gauge, sum(width_profile[1:idx]))
@@ -158,16 +164,16 @@ let
     if iseven(x)
       os .+= -effective_Jz, "Sz", b.s1, "Sz", b.s2
       zbond += 1
-      # @info "Added Sz-Sz bond" term = ("Jz", effective_Jz, "Sz", b.s1, "Sz", b.s2)
+      @info "Added Sz-Sz bond" term = ("Jz", effective_Jz, "Sz", b.s1, "Sz", b.s2)
     else
       if abs(b.s1 - b.s2) == Ny 
         os .+= -effective_Jx, "Sx", b.s1, "Sx", b.s2
         xbond += 1
-        # @info "Added Sx-Sx bond" term = ("Jx", effective_Jx, "Sx", b.s1, "Sx", b.s2)
+        @info "Added Sx-Sx bond" term = ("Jx", effective_Jx, "Sx", b.s1, "Sx", b.s2)
       elseif abs(b.s1 - b.s2) == Ny - 1
         os .+= -effective_Jy, "Sy", b.s1, "Sy", b.s2
         ybond += 1
-        # @info "Added Sy-Sy bond" term = ("Jy", effective_Jy, "Sy", b.s1, "Sy", b.s2)
+        @info "Added Sy-Sy bond" term = ("Jy", effective_Jy, "Sy", b.s1, "Sy", b.s2)
       end
     end
   end
@@ -191,16 +197,9 @@ let
   if abs(κ) > 1e-8
     println(repeat("*", 200))
     println("Setting up three-body interactions in the Hamiltonian")
-    
-    
+     
     wedge_count::Int = 0
     for w in wedge
-      # if w.s2 == constriction₁[1] || w.s2 == constriction₁[2] || 
-      #   w.s2 == constriction₂[1] || w.s2 == constriction₂[2]
-      #   effective_κ = α * κ
-      # else
-      #   effective_κ = κ
-      # end
       effective_κ = κ
 
       
@@ -213,7 +212,7 @@ let
         end
       end
       # @show w.s2, x
-
+      
       
       if abs(w.s1 - w.s3) == 1
         if isodd(x)
@@ -245,16 +244,18 @@ let
           wedge_count += 1
         end
       end
+
+      @show wedge_count
     end
     
 
     # Check to make sure the number of three-spin interaction terms is correct
     println("\nChecking the number of three-spin interaction terms in the Hamiltonian:")
     @show wedge_count
-    if wedge_count != 122
-      error("The number of three-spin interaction terms is incorrect!")
-    end
-    println("")
+    # if wedge_count != 122
+    #   error("The number of three-spin interaction terms is incorrect!")
+    # end
+    # println("")
   end
   #***************************************************************************************************************
   
@@ -373,7 +374,7 @@ let
 
 
   # Loop through all the bonds in the lattice and measure the energy densities associated with each bond 
-  E_bond = []
+  E_bond = Any[]
   for b in lattice
     if (b.s1 == constriction₁[1] && b.s2 == constriction₁[2]) || (b.s1 == constriction₁[2] && b.s2 == constriction₁[1]) || 
        (b.s1 == constriction₂[1] && b.s2 == constriction₂[2]) || (b.s1 == constriction₂[2] && b.s2 == constriction₂[1])
@@ -414,18 +415,21 @@ let
 
     tmp_H = MPO(tmp_os, sites)
     tmp_E = inner(ψ', tmp_H, ψ)
-    @show b.s1, b.s2, tmp_E
+    # @show b.s1, b.s2, tmp_E
     push!(E_bond, [b.s1, b.s2, tmp_E])
     Etotal += tmp_E
   end
+
+  # Convert the vector into a matrix to save it in the HDF5 file
+  E_bond = stack(E_bond)
+  # @show size(E_bond)
   println("")
 
 
   """
     Compute the energy contribution from the three-spin interaction terms
   """
-  
-  E_wedge = []
+  E_wedge = Any[]
   for w in wedge
     # Determine the x coordinate of the second site and use the second site as the anchor point 
     x = 0
@@ -470,10 +474,14 @@ let
     # Set up the MPO for the three-spin term and compute its energy contribution
     tmp_H = MPO(tmp_os, sites)    
     tmp_E = inner(ψ', tmp_H, ψ)
-    @show w.s1, w.s2, w.s3, tmp_E
+    # @show w.s1, w.s2, w.s3, tmp_E
     push!(E_wedge, [w.s1, w.s2, w.s3, real(tmp_E)])
     Etotal += tmp_E
   end  
+
+  # Convert the vector into a matrix to save it in the HDF5 file
+  E_wedge = stack(E_wedge)
+  # @show size(E_wedge)
   println("")
 
 
@@ -531,21 +539,22 @@ let
   #***************************************************************************************************************
   #***************************************************************************************************************
 
-  # """
-  #   Save the ground-state wavefunction and various observables to an HDF5 file
-  # """
-  # h5open("data/interferometry_kappa$(κ).h5", "cw") do file
-  #   write(file, "psi", ψ)
-  #   write(file, "E0", energy)
-  #   # write(file, "E0variance", variance)
-  #   # write(file, "Ehist", custom_observer.ehistory)
-  #   # write(file, "Bond", custom_observer.chi)
-  #   write(file, "chi", linkdims(ψ))
-  #   write(file, "plaquette", plaquette_vals)
-  # end
+ 
+ 
+  """
+    Save the ground-state wavefunction and various observables to an HDF5 file
+  """
+  h5open("data/interferometry_N$(Nx_unit)_kappa$(κ).h5", "cw") do file
+    write(file, "psi", ψ)
+    write(file, "E0", energy)
+    write(file, "E0_bond", E_bond)
+    write(file, "E0_wedge", E_wedge)
+    # write(file, "E0variance", variance)
+    # write(file, "Ehist", custom_observer.ehistory)
+    # write(file, "Bond", custom_observer.chi)
+    write(file, "chi", linkdims(ψ))
+    write(file, "plaquette", plaquette_vals)
+  end
 
   return
-
-
-
 end
