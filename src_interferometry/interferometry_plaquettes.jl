@@ -29,7 +29,7 @@ function interferometry_plaquette_reference_obc(input_sites::Int, input_length::
 				end
 			end
 		end
-		# @show site_idx, x, y
+		@show site_idx, x, y
 
 
 		# Determine if the site can be used as a reference point based on its (x, y) coordinates
@@ -44,6 +44,10 @@ function interferometry_plaquette_reference_obc(input_sites::Int, input_length::
 				elseif input_width[x - 1] == 3 && input_width[x + 1] == 4
 					if y != 1 && y != 2
 						push!(plaquette_refs, site_idx)	
+					end
+				elseif input_width[x - 1] == 4 && input_width[x + 1] == 4
+					if y != 1
+						push!(plaquette_refs, site_idx)
 					end
 				end
 			end
