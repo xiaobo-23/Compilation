@@ -226,7 +226,7 @@ function interferometry_wedge(Nx::Int, Ny::Int, Nsites::Int, geometry_profile::V
 	if Nsites != Nx * Ny - 6
 		error("The number of sites does not match the interferometry geometry!")
 	end
-	Nwedge = 3 * Nsites - 4 * (Ny - 1) - 2 * (Nx - 6)
+	Nwedge = 3 * Nsites - 4 * (Ny - 1) - 2 * (Nx - 6) - 20
 	@info "Number of wedge bonds: $Nwedge"
 
 
