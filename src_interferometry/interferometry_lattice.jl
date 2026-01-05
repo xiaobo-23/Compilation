@@ -78,15 +78,6 @@ function interferometry_lattice_obc(Nx::Int, Ny::Int, Nsites::Int, geometry_prof
 	# @info "Number of bonds: $Nbond"
 
 	
-	# Construct the geometry profile dynamically based on Nx
-	geometry_profile = Int[3, 4, 4, 4, 4, 4, 4, 3, 4, 4, 3, 4, 4, 3, 4, 4, 3, 4, 4, 4, 4, 4, 4, 3]
-	# geometry_profile = Int[]
-	# for i in 1:5
-	# 	append!(geometry_profile, [3, 4, 4])
-	# end
-	# push!(geometry_profile, 3)
-	
-
 	# Obtain an array to gaue the x coordinates of each lattice point
 	xcoordinate_gauge = Int[]
 	for idx in 0:length(geometry_profile)
@@ -106,7 +97,6 @@ function interferometry_lattice_obc(Nx::Int, Ny::Int, Nsites::Int, geometry_prof
 				break
 			end
 		end
-		# @show n, x
 
 		y = 0
 		if geometry_profile[x] == 4
