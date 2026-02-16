@@ -172,56 +172,114 @@ end
 
 
 
-function interferometry_lattice_pbc(Nx::Int, Ny::Int, input_geometry::Vector{Int})::Lattice
+function interferometry_lattice_pbc(Nx::Int, Ny::Int)::Lattice
 	"""
 		Set up all bonds on the interferometer lattice 
 		Use periodic boundary condition along the x direction
 		Use open boundary condition along the y direction
+		Nx: Total number of unit cells along the x direction 
+		Ny: Total number of unit cells along the y direction
 	"""
 
 	# Set up the number of sites and the number of bonds
-	Nsite = Nx * Ny - 4
-	Nbond = 3 * Nsite - 8
-  
+	Nsite = 2 * Nx * Ny - 4
+	input_geometry = Int[Ny - 2, Ny, Ny, Ny, Ny, Ny, Ny, Ny - 2]
+	if sum(input_geometry) != Nsite
+		error("The number of sites does not match the interferometry geometry!")
+	end
+	Nbond = 3 * div(Nsite, 2) - 8
+
+
+	# Obtain an array to gaue the x coordinates of each lattice point
+	xcoordinate_gauge = Int[]
+	for idx in 0:length(input_geometry)
+		append!(xcoordinate_gauge, sum(input_geometry[1:idx]))
+	end
+	# @show xcoordinate_gauge
+
+	
 	# Set up the lattice as an tuple of bonds
 	latt = Lattice(undef, Nbond)
   	b = 0
 	for n in 1:Nsite
-		x = div(n - 1, Ny) + 1
-		y = mod(n - 1, Ny) + 1
-
-		# horizontal bonds 
-		if iseven(x) && x < Nx
-			latt[b += 1] = LatticeBond(n, n + Ny)
-		end
-
-		# bonds with +/- 60 degree angles
-		if isodd(x) && x == 1
-			latt[b += 1] = LatticeBond(n, n + Ny)
-			if y == Ny 
-				if yperiodic
-					latt[b += 1] = LatticeBond(n, n + 1)
-				end
-			else
-				latt[b += 1] = LatticeBond(n, n + Ny + 1)
+		# Determine the x coordinate of the lattice point n based on the input geometry
+		x = 0
+		for idx in 1 : length(xcoordinate_gauge) - 1
+			if n > xcoordinate_gauge[idx] && n <= xcoordinate_gauge[idx + 1]
+				x = idx
+				break
 			end
 		end
-
-		if isodd(x) && x != 1
-			latt[b += 1] = LatticeBond(n, n + Ny)
-			if y == 1
-				if yperiodic
-					latt[b += 1] = LatticeBond(n, n + 2 * Ny - 1)
-				end
-			else
+		
+		# Determine the y coordinate of the lattice point n based on the input geometry
+		y = 0
+		for idx in 1 : length(xcoordinate_gauge) - 1
+			if n > xcoordinate_gauge[idx] && n <= xcoordinate_gauge[idx + 1]
+				tmp = n - xcoordinate_gauge[idx]
+				y = mod(tmp - 1, input_geometry[idx]) + 1
+				break
+			end
+		end
+		# @show n, x, y
+		
+		
+		# Set up the bonds for two-body interactions based on the x and y coordinates of the lattice point n
+		if isodd(x)
+			if x == 1
 				latt[b += 1] = LatticeBond(n, n + Ny - 1)
+				# @show n, n + Ny - 1
+				if y <= 2
+					latt[b += 1] = LatticeBond(n, n + Ny - 2)
+					# @show n, n + Ny - 2
+				else
+					latt[b += 1] = LatticeBond(n, n + Ny)
+					# @show n, n + Ny
+				end
+			elseif x == 2 * Nx - 1
+				if y == 1
+					latt[b += 1] = LatticeBond(n, n + Ny)
+					latt[b += 1] = LatticeBond(n, n + 2 * Ny - 3)
+					# @show n, n + Ny
+					# @show n, n + 2 * Ny - 3
+				elseif n in [36, 37]
+					latt[b += 1] = LatticeBond(n, n + Ny - 1)
+					# @show n, n + Ny - 1
+				elseif n in [39, 40]
+					latt[b += 1] = LatticeBond(n, n + Ny - 2)
+					# @show n, n + Ny - 2
+				else
+					latt[b += 1] = LatticeBond(n, n + Ny - 1)
+					latt[b += 1] = LatticeBond(n, n + Ny - 2)
+					# @show n, n + Ny - 1
+					# @show n, n + Ny - 2
+				end
+			else
+				latt[b += 1] = LatticeBond(n, n + Ny)
+				# @show n, n + Ny 
+				if y == 1
+					latt[b += 1] = LatticeBond(n, n + 2 * Ny - 1)
+					# @show n, n + 2 * Ny - 1
+				else
+					latt[b += 1] = LatticeBond(n, n + Ny - 1)
+					# @show n, n + Ny - 1
+				end
+			end
+		else
+			if x != 2 * Nx
+				latt[b += 1] = LatticeBond(n, n + Ny)
+				# @show n, n + Ny
 			end
 		end
+	end
+	
+
+	# Check if the number of bonds that have been set up matches the expected value	
+	if length(latt) != Nbond
+		error("The number of bonds that have been set up does not match the expected value!")
 	end
 
 	return latt
 end
-
 
 
 
