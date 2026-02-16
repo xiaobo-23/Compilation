@@ -1,7 +1,6 @@
-# 04/24/2025
-# Simulate the 2D tJ-Kitaev honeycomb model to design topologucal qubits based on quantum spin liquids (QSLs)
-# Introduce three-spin interaction, electron hopping, and Kitaev interaction; remove the spin vacancy
-
+# 02/15/2026
+# Implement the interferometer setup for 2D Kitaev model with periodic boundary condition along the y direction
+# Include two-body interactions and three-body interactions, and the constrictions of the interferometer by removing sites and bonds
 
 using ITensors
 using ITensorMPS
@@ -11,23 +10,23 @@ using LinearAlgebra
 using TimerOutputs
 
 
+
 include("HoneycombLattice.jl")
 include("Entanglement.jl")
 include("TopologicalLoops.jl")
 include("CustomObserver.jl")
 
 
-# Set up parameters for multithreading for BLAS/LAPACK and Block sparse multithreading
+# Set up and verify configurations of multithreading used in BLAS/LAPACK and Block sparse multithreading
 MKL_NUM_THREADS = 8
 OPENBLAS_NUM_THREADS = 8
 OMP_NUM_THREADS = 8
 
-
-# Monitor the number of threads used by BLAS and LAPACK
-@show BLAS.get_config()
-@show BLAS.get_num_threads()
+@info "BLAS configuration:" config = BLAS.get_config()
+@info "BLAS threads:" num_threads = BLAS.get_num_threads()
 
 
+# Set up the parameters for the Kitaev modela and the intergerometry geometry
 const Nx_unit = 4
 const Ny_unit = 6
 const Nx = 2 * Nx_unit
@@ -37,9 +36,11 @@ const Jx::Float64 = 1.0
 const Jy::Float64 = 1.0 
 const Jz::Float64 = 1.0 
 const κ::Float64 = -0.2
-# const t::Float64 = 0.1
-const h::Float64 = 0.0
+# const h::Float64 = 0.0
 const time_machine = TimerOutput()  # Timing and profiling
+
+
+
 
 
 let
