@@ -170,8 +170,6 @@ function interferometry_lattice_obc(Nx::Int, Ny::Int, Nsites::Int, geometry_prof
 end
 
 
-
-
 function interferometry_lattice_pbc(Nx::Int, Ny::Int)::Lattice
 	"""
 		Set up all bonds on the interferometer lattice 
