@@ -1,5 +1,5 @@
 # 02/15/2026
-# Implement the interferometer setup for 2D Kitaev model with periodic boundary condition along the y direction
+# Implement the interferometer setup for 2D Kitaev model with periodic boundary condition along x direction
 # Include two-body interactions and three-body interactions, and the constrictions of the interferometer by removing sites and bonds
 
 using ITensors
@@ -15,9 +15,10 @@ include("HoneycombLattice.jl")
 include("Entanglement.jl")
 include("TopologicalLoops.jl")
 include("CustomObserver.jl")
+include("interferometry_lattice.jl")
 
 
-# Set up and verify configurations of multithreading used in BLAS/LAPACK and Block sparse multithreading
+# Configure multithreading for BLAS/LAPACK operations
 MKL_NUM_THREADS = 8
 OPENBLAS_NUM_THREADS = 8
 OMP_NUM_THREADS = 8
@@ -26,20 +27,20 @@ OMP_NUM_THREADS = 8
 @info "BLAS threads:" num_threads = BLAS.get_num_threads()
 
 
-# Set up the parameters for the Kitaev modela and the intergerometry geometry
-const Nx_unit = 4
-const Ny_unit = 6
-const Nx = 2 * Nx_unit
-const Ny = Ny_unit
-const N = Nx * Ny
+
+# Set up physical parameters for the 2D Kitaev model and the lattice geometry parameters
 const Jx::Float64 = 1.0
-const Jy::Float64 = 1.0 
-const Jz::Float64 = 1.0 
+const Jy::Float64 = 1.0
+const Jz::Float64 = 1.0
 const κ::Float64 = -0.2
-# const h::Float64 = 0.0
-const time_machine = TimerOutput()  # Timing and profiling
+const Nx_unit = 4           # Number of unit cells in x-direction
+const Ny_unit = 6           # Number of unit cells in y-direction
+const Nx = 2 * Nx_unit      # Total width (honeycomb lattice)
+const Ny = Ny_unit          # Height with periodic boundary condition
+const N = Nx * Ny - 4       # Total number of sites
 
-
+# Timing and profiling
+const time_machine = TimerOutput()
 
 
 
@@ -48,14 +49,14 @@ let
   #***************************************************************************************************************
   println(repeat("*", 200))
   println(repeat("*", 200))
-  println("Obtaining the ground state of the interferometry setup of the 2D Kitaev model using DMRG")
+  println("Obtain the ground state of the interferometry setup of the 2D Kitaev model using DMRG")
   println(repeat("*", 200))
   println(repeat("*", 200))
   println("")
 
   
-  # Scaling factor for the Kitaev interaction to set up the interferometry
-  α = 1E-6
+  # # Scaling factor for the Kitaev interaction to set up the interferometry
+  # α = 1E-6
 
   
   # Set up the bonds on a honeycomb lattice for the two-spin interactions

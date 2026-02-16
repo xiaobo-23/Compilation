@@ -171,6 +171,60 @@ end
 
 
 
+
+function interferometry_lattice_pbc(Nx::Int, Ny::Int, input_geometry::Vector{Int})::Lattice
+	"""
+		Set up all bonds on the interferometer lattice 
+		Use periodic boundary condition along the x direction
+		Use open boundary condition along the y direction
+	"""
+
+	# Set up the number of sites and the number of bonds
+	Nsite = Nx * Ny - 4
+	Nbond = 3 * Nsite - 8
+  
+	# Set up the lattice as an tuple of bonds
+	latt = Lattice(undef, Nbond)
+  	b = 0
+	for n in 1:Nsite
+		x = div(n - 1, Ny) + 1
+		y = mod(n - 1, Ny) + 1
+
+		# horizontal bonds 
+		if iseven(x) && x < Nx
+			latt[b += 1] = LatticeBond(n, n + Ny)
+		end
+
+		# bonds with +/- 60 degree angles
+		if isodd(x) && x == 1
+			latt[b += 1] = LatticeBond(n, n + Ny)
+			if y == Ny 
+				if yperiodic
+					latt[b += 1] = LatticeBond(n, n + 1)
+				end
+			else
+				latt[b += 1] = LatticeBond(n, n + Ny + 1)
+			end
+		end
+
+		if isodd(x) && x != 1
+			latt[b += 1] = LatticeBond(n, n + Ny)
+			if y == 1
+				if yperiodic
+					latt[b += 1] = LatticeBond(n, n + 2 * Ny - 1)
+				end
+			else
+				latt[b += 1] = LatticeBond(n, n + Ny - 1)
+			end
+		end
+	end
+
+	return latt
+end
+
+
+
+
 # 01/06/2025
 # Define a wedge bond to introduce the three-body interaction
 struct WedgeBond
