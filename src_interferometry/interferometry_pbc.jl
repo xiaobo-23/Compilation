@@ -306,10 +306,12 @@ let
   
   #******************************************************************************************************************************************
   #******************************************************************************************************************************************
-  """Run DMRG simulations to find the ground-state wavefunction of the interferometry setup of the 2D Kitaev model""" 
+  """Run DMRG simulation to find the ground-state wavefunction of the interferometry setup of the 2D Kitaev model""" 
   println(repeat("*", 200))
   println("Running DMRG simulations to find the ground-state wavefunction")
 
+  
+  
   # Initialize the wavefunction as a random MPS and set up the Hamiltonian as an MPO
   sites = siteinds("S=1/2", N)
   state = [isodd(n) ? "Up" : "Dn" for n in 1:N]
@@ -318,8 +320,8 @@ let
   
   
   # Set up hyperparameters used in the DMRG simulations, including bond dimensions, cutoff etc.
-  nsweeps = 10
-  maxdim  = [20, 80, 300]
+  nsweeps = 8
+  maxdim  = [20, 80, 350]
   cutoff  = [1E-10]
   eigsolve_krylovdim = 50
   
@@ -394,18 +396,12 @@ let
   ]
 
   
-  # for idx in 1 : size(plaquette_inds, 1)
-  #   @show plaquette_inds[idx, :]
-  # end
-  # println("")
-
- 
   nplaquettes = size(plaquette_inds, 1)
   plaquette_vals = zeros(Float64, nplaquettes)
 
   @timeit time_machine "plaquette operators" begin
     for idx in 1:nplaquettes
-      indices  = plaquette_inds[idx, :]
+      indices = plaquette_inds[idx, :]
       os_w = OpSum()
       os_w .+= plaquette_operator[1], indices[1], 
         plaquette_operator[2], indices[2], 
@@ -448,7 +444,6 @@ let
   println("\nBond dimension of the optimized MPS wavefunction:")
   @show linkdims(ψ)
  
-
 
   # # Check one-point functions
   # println("Expectation values of one-point functions <Sx>, <Sy>, and <Sz>:")

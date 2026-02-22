@@ -454,3 +454,198 @@ function interferometry_wedge(Nx::Int, Ny::Int, Nsites::Int, geometry_profile::V
 	# @show wedge
 	return wedge
 end
+
+
+
+# 02/19/2026
+# Implement the three-spin interactions on the interferometer with periodic boundary condition along the y direction
+function interferometry_wedge_pbc(Nx::Int, Ny::Int, Nsites::Int)
+	"""
+		Set all three-spin interactions on the interfermeter lattice
+		Nx is the number of unit cells along the x direction
+		Ny is the number of unit cells along the y direction
+	"""
+
+	# Validate the interferometer by checking the number of sites 
+	if Nsites != 2 * Nx * Ny - 4
+		error("The number of sites does not match the interferometer!")
+	end
+	
+	
+	# Set up the input geometry of the interferometer
+	input_geometry = Int[Ny - 2, Ny, Ny, Ny, Ny, Ny, Ny, Ny - 2]
+	if sum(input_geometry) != Nsites
+		error("The number of sites does not match the interferometry geometry!")
+	end
+	
+
+	# Obtain an array to gaue the x coordinates of each lattice point
+	xcoordinate_gauge = Int[]
+	for idx in 0:length(input_geometry)
+		append!(xcoordinate_gauge, sum(input_geometry[1:idx]))
+	end
+	# @show xcoordinate_gauge
+	
+
+    # Set up the number of three-spin interactions 	
+	Nterms = 3 * Nsites - (Ny - 2) * 8
+	# @info "Number of three-spin interactions: $Nterms"
+
+
+	wedge = Vector{WedgeBond}(undef, Nterms)
+	b = 0
+	for n in 1 : Nsites
+		# Determine the x coordinate of the lattice point n based on the input geometry
+		x = 0
+		for idx in 1 : length(xcoordinate_gauge) - 1
+			if n > xcoordinate_gauge[idx] && n <= xcoordinate_gauge[idx + 1]
+				x = idx
+				break
+			end
+		end
+		
+		# Determine the y coordinate of the lattice point n based on the input geometry
+		y = 0
+		for idx in 1 : length(xcoordinate_gauge) - 1
+			if n > xcoordinate_gauge[idx] && n <= xcoordinate_gauge[idx + 1]
+				tmp = n - xcoordinate_gauge[idx]
+				y = mod(tmp - 1, input_geometry[idx]) + 1
+				break
+			end
+		end
+		@show n, x, y
+		
+		
+		# Set up three-spin interactions in the bulk of the interferometer	
+		if isodd(x) && x != 1 && x != 2 * Nx - 1
+			n₁ = n - Ny
+			n₂ = n + Ny 
+			if y == 1
+				n₃ = n + 2 * Ny - 1
+				wedge[b += 1] = WedgeBond(n₂, n, n₃)
+				@show n₂, n, n₃
+			else
+				n₃ = n + Ny - 1
+				wedge[b += 1] = WedgeBond(n₃, n, n₂)
+				@show n₃, n, n₂
+			end
+			wedge[b += 1] = WedgeBond(n₁, n, n₂)
+			wedge[b += 1] = WedgeBond(n₁, n, n₃)
+			@show n₁, n, n₂
+			@show n₁, n, n₃
+		elseif iseven(x) && x != 2 && x != 2 * Nx
+			n₁ = n - Ny
+			if y == Ny 
+				n₂ = n - 2 * Ny + 1
+				wedge[b += 1] = WedgeBond(n₂, n, n₁)
+				@show n₂, n, n₁
+			else
+				n₂ = n - Ny + 1
+				wedge[b += 1] = WedgeBond(n₁, n, n₂)
+				@show n₁, n, n₂
+			end
+			n₃ = n + Ny 
+			wedge[b += 1] = WedgeBond(n₁, n, n₃)
+			wedge[b += 1] = WedgeBond(n₂, n, n₃)
+			@show n₁, n, n₃
+			@show n₂, n, n₃
+		end
+
+	# 	if x == 1
+	# 		wedge[b += 1] = WedgeBond(n + Ny - 1, n, n + Ny)
+	# 	elseif x == Nx 
+	# 		wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
+	# 	else
+	# 		if iseven(x)
+	# 			if geometry_profile[x] == Ny 
+	# 				if geometry_profile[x + 1] == Ny - 1
+	# 					if y == 1
+	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
+	# 					elseif y == Ny
+	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny - 1)
+	# 					else
+	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
+	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny - 1)
+	# 						wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny - 1)
+	# 					end
+	# 				elseif geometry_profile[x - 1] == Ny - 1
+	# 					if y == Ny 
+	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
+	# 					elseif y == 1
+	# 						wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
+	# 					else
+	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
+	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
+	# 						wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
+	# 					end	
+	# 				else
+	# 					if y == Ny 
+	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
+	# 					elseif y == 1
+	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
+	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
+	# 						wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
+	# 					else
+	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
+	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
+	# 						wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
+	# 					end
+	# 				end 
+	# 			elseif geometry_profile[x] == Ny - 1
+	# 				wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
+	# 				wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny - 1)
+	# 				wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny - 1)
+	# 			end
+	# 		else
+	# 			if geometry_profile[x] == Ny - 1
+	# 				wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
+	# 				wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny - 1)
+	# 				wedge[b += 1] = WedgeBond(n + Ny - 1, n, n + Ny)
+	# 			else
+	# 				if geometry_profile[x - 1] == Ny - 1
+	# 					if y == 1
+	# 						wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
+	# 					elseif y == Ny 
+	# 						wedge[b += 1] = WedgeBond(n + Ny - 1, n, n + Ny)
+	# 					else
+	# 						wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
+	# 						wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny - 1)
+	# 						wedge[b += 1] = WedgeBond(n + Ny - 1, n, n + Ny)
+	# 					end
+	# 				elseif geometry_profile[x + 1] == Ny - 1
+	# 					if y == 1
+	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
+	# 					elseif y == Ny
+	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny - 1)
+	# 					else
+	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
+	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny - 1)
+	# 						wedge[b += 1] = WedgeBond(n + Ny - 1, n, n + Ny)
+	# 					end
+	# 				else
+	# 					if y == 1
+	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
+	# 					else
+	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
+	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny - 1)
+	# 						wedge[b += 1] = WedgeBond(n + Ny - 1, n, n + Ny)
+	# 					end
+	# 				end
+	# 			end
+	# 		end
+	# 	end
+	end
+	
+	# # Check the number of three-spin interactions that have been set up
+	# if length(wedge) != Nterms
+	# 	error("The number of wedges that have been set up does not match the expected value!")
+	# end
+	
+	# @show wedge
+	return wedge
+end
+
+
+
+
+interferometry_wedge_pbc(4, 6, 44)
