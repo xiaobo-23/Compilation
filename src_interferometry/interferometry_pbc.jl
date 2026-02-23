@@ -239,6 +239,49 @@ let
     end
 
 
+    if xcoordinate == 2
+      if abs(w.s3 - w.s1) == 1
+        os .+= κ, "Sy", w.s1, "Sz", w.s2, "Sx", w.s3
+        wedge_count += 1
+        @info "Added three-spin term" term = ("Sy", w.s1, "Sz", w.s2, "Sx", w.s3)
+      else
+        threshold = ycoordinate <= 3 ? 2 * Ny - 2 : 2 * Ny - 1
+        if abs(w.s3 - w.s1) == threshold
+          os .+= κ, "Sx", w.s1, "Sy", w.s2, "Sz", w.s3
+          wedge_count += 1
+          @info "Added three-spin term" term = ("Sx", w.s1, "Sy", w.s2, "Sz", w.s3)
+        else
+          os .+= κ, "Sy", w.s1, "Sx", w.s2, "Sz", w.s3
+          wedge_count += 1
+          @info "Added three-spin term" term = ("Sy", w.s1, "Sx", w.s2, "Sz", w.s3)
+        end
+      end
+    end
+
+
+    if xcoordinate == Nx - 1
+      if abs(w.s3 - w.s1) == 1 
+        os .+= κ, "Sx", w.s1, "Sz", w.s2, "Sy", w.s3
+        wedge_count += 1
+        @info "Added three-spin term" term = ("Sx", w.s1, "Sz", w.s2, "Sy", w.s3)
+      elseif abs(w.s3 - w.s1) == 3
+        os .+= κ, "Sy", w.s1, "Sz", w.s2, "Sx", w.s3
+        wedge_count += 1
+        @info "Added three-spin term" term = ("Sy", w.s1, "Sz", w.s2, "Sx", w.s3)
+      else
+        if (ycoordinate == 6 && abs(w.s3 - w.s1) == 2 * Ny - 2) || (ycoordinate == 1 && abs(w.s3 - w.s1) == 2 * Ny) || (3 <= ycoordinate <= 5 && abs(w.s3 - w.s1) == 2 * Ny - 1)
+          os .+= κ, "Sz", w.s1, "Sx", w.s2, "Sy", w.s3
+          wedge_count += 1
+          @info "Added three-spin term" term = ("Sz", w.s1, "Sx", w.s2, "Sy", w.s3)
+        else
+           os .+= κ, "Sz", w.s1, "Sy", w.s2, "Sx", w.s3
+          wedge_count += 1
+          @info "Added three-spin term" term = ("Sz", w.s1, "Sy", w.s2, "Sx", w.s3)
+        end
+      end 
+    end
+
+
     # Set up the three-spin interactions in the bul region    
     if 2 < xcoordinate < Nx - 1 && isodd(xcoordinate)
       if abs(w.s2 - w.s1) == Ny 
@@ -252,7 +295,7 @@ let
           @info "Added three-spin term" term = ("Sz", w.s1, "Sy", w.s2, "Sx", w.s3)   
         end
       else
-        if y == 1
+        if ycoordinate == 1
           os .+= κ, "Sy", w.s1, "Sz", w.s2, "Sx", w.s3
           wedge_count += 1
           @info "Added three-spin term" term = ("Sy", w.s1, "Sz", w.s2, "Sx", w.s3)  
@@ -277,7 +320,7 @@ let
           @info "Added three-spin term" term = ("Sx", w.s1, "Sy", w.s2, "Sz", w.s3)
         end
       else
-        if y == Ny 
+        if ycoordinate == Ny 
           os .+= κ, "Sx", w.s1, "Sz", w.s2, "Sy", w.s3
           wedge_count += 1
           @info "Added three-spin term" term = ("Sx", w.s1, "Sz", w.s2, "Sy", w.s3)
@@ -288,8 +331,8 @@ let
         end
       end
     end
-    
-   
+     
+  
   end
   
 
