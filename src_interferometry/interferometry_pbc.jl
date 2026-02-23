@@ -265,7 +265,29 @@ let
     end 
     
 
-    
+    if 2 < xcoordinate < Nx - 1 && iseven(xcoordinate)
+      if abs(w.s3 - w.s2) == Ny 
+        if abs(w.s2 - w.s1) == Ny 
+          os .+= κ, "Sy", w.s1, "Sx", w.s2, "Sz", w.s3
+          wedge_count += 1
+          @info "Added three-spin term" term = ("Sy", w.s1, "Sx", w.s2, "Sz", w.s3)
+        else
+          os .+= κ, "Sx", w.s1, "Sy", w.s2, "Sz", w.s3
+          wedge_count += 1
+          @info "Added three-spin term" term = ("Sx", w.s1, "Sy", w.s2, "Sz", w.s3)
+        end
+      else
+        if y == Ny 
+          os .+= κ, "Sx", w.s1, "Sz", w.s2, "Sy", w.s3
+          wedge_count += 1
+          @info "Added three-spin term" term = ("Sx", w.s1, "Sz", w.s2, "Sy", w.s3)
+        else
+          os .+= κ, "Sy", w.s1, "Sz", w.s2, "Sx", w.s3
+          wedge_count += 1
+          @info "Added three-spin term" term = ("Sy", w.s1, "Sz", w.s2, "Sx", w.s3)
+        end
+      end
+    end
     
    
   end
