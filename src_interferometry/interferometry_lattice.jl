@@ -513,7 +513,7 @@ function interferometry_wedge_pbc(Nx::Int, Ny::Int, Nsites::Int)
 				break
 			end
 		end
-		@show n, x, y
+		# @show n, x, y
 		
 		
 		# Set up three-spin interactions in the bulk of the interferometer	
@@ -523,60 +523,70 @@ function interferometry_wedge_pbc(Nx::Int, Ny::Int, Nsites::Int)
 			if y == 1
 				n₃ = n + 2 * Ny - 1
 				wedge[b += 1] = WedgeBond(n₂, n, n₃)
-				@show n₂, n, n₃
+				# @show n₂, n, n₃
 			else
 				n₃ = n + Ny - 1
 				wedge[b += 1] = WedgeBond(n₃, n, n₂)
-				@show n₃, n, n₂
+				# @show n₃, n, n₂
 			end
 			wedge[b += 1] = WedgeBond(n₁, n, n₂)
 			wedge[b += 1] = WedgeBond(n₁, n, n₃)
-			@show n₁, n, n₂
-			@show n₁, n, n₃
+			# @show n₁, n, n₂
+			# @show n₁, n, n₃
 		elseif iseven(x) && x != 2 && x != 2 * Nx
 			n₁ = n - Ny
 			if y == Ny 
 				n₂ = n - 2 * Ny + 1
 				wedge[b += 1] = WedgeBond(n₂, n, n₁)
-				@show n₂, n, n₁
+				# @show n₂, n, n₁
 			else
 				n₂ = n - Ny + 1
 				wedge[b += 1] = WedgeBond(n₁, n, n₂)
-				@show n₁, n, n₂
+				# @show n₁, n, n₂
 			end
 			n₃ = n + Ny 
 			wedge[b += 1] = WedgeBond(n₁, n, n₃)
 			wedge[b += 1] = WedgeBond(n₂, n, n₃)
-			@show n₁, n, n₃
-			@show n₂, n, n₃
+			# @show n₁, n, n₃
+			# @show n₂, n, n₃
 		end
 
-	
+		
 		# Three-spin interactions at the boundary x = 1
 		if x == 1
 			n₁ = y <= 2 ? n + Ny - 2 : n + Ny - 1
 			n₂ = y <= 2 ? n + Ny - 1 : n + Ny
 			wedge[b += 1] = WedgeBond(n₁, n, n₂)
-			@show n₁, n, n₂
+			# @show n₁, n, n₂
 		end
-
+		
 
 
 		# Three-spin interaction at the boundary x = 2
 		if x == 2
 			if y <= 2
 				wedge[b += 1] = WedgeBond(n - Ny + 2, n, n + Ny)
-				@show n - Ny + 2, n, n + Ny
+				# @show n - Ny + 2, n, n + Ny
 			end
 
 			if 2 <= y <= 5
 				wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
-				@show n - Ny + 1, n, n + Ny
+				# @show n - Ny + 1, n, n + Ny
 			end
 
 			if y >= 5
 				wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
-				@show n - Ny, n, n + Ny
+				# @show n - Ny, n, n + Ny
+			end
+
+			if y == 2
+				wedge[b += 1] = WedgeBond(n - Ny + 1, n, n - Ny + 2)
+				# @show n - Ny + 1, n, n - Ny + 2
+			end
+
+			if y == 5
+				wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
+				# @show n - Ny, n, n - Ny + 1
 			end
 		end
 		
@@ -588,22 +598,34 @@ function interferometry_wedge_pbc(Nx::Int, Ny::Int, Nsites::Int)
 			
 			if y == 1
 				wedge[b += 1] = WedgeBond(n₁, n, n + Ny)
-				@show n₁, n, n + Ny
+				# @show n₁, n, n + Ny
 			end
 			
 			if 2 <= y <= 4
 				wedge[b += 1] = WedgeBond(n₁, n, n + Ny - 1)
-				@show n₁, n, n + Ny - 1
+				# @show n₁, n, n + Ny - 1
 			end
 			
 			if 4 <= y <= 6
 				wedge[b += 1] = WedgeBond(n₁, n, n + Ny - 2)
-				@show n₁, n, n + Ny - 2
+				# @show n₁, n, n + Ny - 2
+			end
+
+			if y == 1
+				wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny + 3)
+				wedge[b += 1] = WedgeBond(n + Ny, n, n + Ny + 3)
+				# @show n - Ny, n, n + Ny + 3
+				# @show n + Ny, n, n + Ny + 3
+			end
+
+			if y == 4
+				wedge[b += 1] = WedgeBond(n + Ny - 2, n, n + Ny - 1)
+				# @show n + Ny - 2, n, n + Ny - 1
 			end
 		end
+		
 
-
-	
+		
 		# Three-spin interactions at the boundary x = 2 * Nx
 		if x == 2 * Nx
 			if y == 1
@@ -617,20 +639,18 @@ function interferometry_wedge_pbc(Nx::Int, Ny::Int, Nsites::Int)
 				n₂ = n - Ny + 2
 			end
 			wedge[b += 1] = WedgeBond(n₁, n, n₂)
-			@show n₁, n, n₂
+			# @show n₁, n, n₂
 		end
 	end
 	
 	
-	# # Check the number of three-spin interactions that have been set up
-	# b == Nterms || error("Expected $Nterms three-spin interactions, but got $b")
+	# Check the number of three-spin interactions that have been set up
+	b == Nterms || error("Expected $Nterms three-spin interactions, but got $b")
 	
 	
-	@show wedge
+	# for tmp in wedge
+	# 	@show tmp.s1, tmp.s2, tmp.s3
+	# end
+	
 	return wedge
 end
-
-
-
-
-interferometry_wedge_pbc(4, 6, 44)
