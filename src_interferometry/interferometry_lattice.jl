@@ -645,8 +645,9 @@ function interferometry_wedge_pbc(Nx::Int, Ny::Int, Nsites::Int)
 	
 	
 	# Check the number of three-spin interactions that have been set up
-	b == Nterms || error("Expected $Nterms three-spin interactions, but got $b")
-	
+	if b != Nterms
+		error("The number of three-spin interactions that have been set up does not match the expected value!")
+	end
 	
 	# for tmp in wedge
 	# 	@show tmp.s1, tmp.s2, tmp.s3
