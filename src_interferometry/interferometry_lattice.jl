@@ -551,97 +551,82 @@ function interferometry_wedge_pbc(Nx::Int, Ny::Int, Nsites::Int)
 			@show n₂, n, n₃
 		end
 
-	# 	if x == 1
-	# 		wedge[b += 1] = WedgeBond(n + Ny - 1, n, n + Ny)
-	# 	elseif x == Nx 
-	# 		wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
-	# 	else
-	# 		if iseven(x)
-	# 			if geometry_profile[x] == Ny 
-	# 				if geometry_profile[x + 1] == Ny - 1
-	# 					if y == 1
-	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
-	# 					elseif y == Ny
-	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny - 1)
-	# 					else
-	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
-	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny - 1)
-	# 						wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny - 1)
-	# 					end
-	# 				elseif geometry_profile[x - 1] == Ny - 1
-	# 					if y == Ny 
-	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
-	# 					elseif y == 1
-	# 						wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
-	# 					else
-	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
-	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
-	# 						wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
-	# 					end	
-	# 				else
-	# 					if y == Ny 
-	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
-	# 					elseif y == 1
-	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
-	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
-	# 						wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
-	# 					else
-	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
-	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
-	# 						wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
-	# 					end
-	# 				end 
-	# 			elseif geometry_profile[x] == Ny - 1
-	# 				wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
-	# 				wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny - 1)
-	# 				wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny - 1)
-	# 			end
-	# 		else
-	# 			if geometry_profile[x] == Ny - 1
-	# 				wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
-	# 				wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny - 1)
-	# 				wedge[b += 1] = WedgeBond(n + Ny - 1, n, n + Ny)
-	# 			else
-	# 				if geometry_profile[x - 1] == Ny - 1
-	# 					if y == 1
-	# 						wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
-	# 					elseif y == Ny 
-	# 						wedge[b += 1] = WedgeBond(n + Ny - 1, n, n + Ny)
-	# 					else
-	# 						wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
-	# 						wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny - 1)
-	# 						wedge[b += 1] = WedgeBond(n + Ny - 1, n, n + Ny)
-	# 					end
-	# 				elseif geometry_profile[x + 1] == Ny - 1
-	# 					if y == 1
-	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
-	# 					elseif y == Ny
-	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny - 1)
-	# 					else
-	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
-	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny - 1)
-	# 						wedge[b += 1] = WedgeBond(n + Ny - 1, n, n + Ny)
-	# 					end
-	# 				else
-	# 					if y == 1
-	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
-	# 					else
-	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
-	# 						wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny - 1)
-	# 						wedge[b += 1] = WedgeBond(n + Ny - 1, n, n + Ny)
-	# 					end
-	# 				end
-	# 			end
-	# 		end
-	# 	end
+	
+		# Three-spin interactions at the boundary x = 1
+		if x == 1
+			n₁ = y <= 2 ? n + Ny - 2 : n + Ny - 1
+			n₂ = y <= 2 ? n + Ny - 1 : n + Ny
+			wedge[b += 1] = WedgeBond(n₁, n, n₂)
+			@show n₁, n, n₂
+		end
+
+
+
+		# Three-spin interaction at the boundary x = 2
+		if x == 2
+			if y <= 2
+				wedge[b += 1] = WedgeBond(n - Ny + 2, n, n + Ny)
+				@show n - Ny + 2, n, n + Ny
+			end
+
+			if 2 <= y <= 5
+				wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
+				@show n - Ny + 1, n, n + Ny
+			end
+
+			if y >= 5
+				wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
+				@show n - Ny, n, n + Ny
+			end
+		end
+		
+		
+
+		# Three-spin interactions at the boundary x = 2 * Nx - 1
+		if x == 2 * Nx - 1
+			n₁ = n - Ny
+			
+			if y == 1
+				wedge[b += 1] = WedgeBond(n₁, n, n + Ny)
+				@show n₁, n, n + Ny
+			end
+			
+			if 2 <= y <= 4
+				wedge[b += 1] = WedgeBond(n₁, n, n + Ny - 1)
+				@show n₁, n, n + Ny - 1
+			end
+			
+			if 4 <= y <= 6
+				wedge[b += 1] = WedgeBond(n₁, n, n + Ny - 2)
+				@show n₁, n, n + Ny - 2
+			end
+		end
+
+
+	
+		# Three-spin interactions at the boundary x = 2 * Nx
+		if x == 2 * Nx
+			if y == 1
+				n₁ = n - Ny 
+				n₂ = n - Ny + 1
+			elseif y == 2 || y == 3
+				n₁ = n - Ny + 1
+				n₂ = n - Ny + 2
+			else
+				n₁ = n - 2 * Ny + 3
+				n₂ = n - Ny + 2
+			end
+			wedge[b += 1] = WedgeBond(n₁, n, n₂)
+			@show n₁, n, n₂
+		end
 	end
 	
-	# # Check the number of three-spin interactions that have been set up
-	# if length(wedge) != Nterms
-	# 	error("The number of wedges that have been set up does not match the expected value!")
-	# end
 	
-	# @show wedge
+	# # Check the number of three-spin interactions that have been set up
+	# b == Nterms || error("Expected $Nterms three-spin interactions, but got $b")
+	
+	
+	@show wedge
 	return wedge
 end
 
