@@ -11,7 +11,6 @@ using TimerOutputs
 
 
 
-include("HoneycombLattice.jl")
 include("Entanglement.jl")
 include("TopologicalLoops.jl")
 include("CustomObserver.jl")
@@ -32,7 +31,7 @@ OMP_NUM_THREADS = 8
 const Jx::Float64 = 1.0
 const Jy::Float64 = 1.0
 const Jz::Float64 = 1.0
-const κ::Float64 = -0.2
+const κ::Float64 = -0.8
 const Nx_unit = 4           # Number of unit cells in x-direction
 const Ny_unit = 6           # Number of unit cells in y-direction
 const Nx = 2 * Nx_unit      # Total width (honeycomb lattice)
@@ -41,6 +40,7 @@ const N = Nx * Ny - 4       # Total number of sites
 
 # Timing and profiling
 const time_machine = TimerOutput()
+
 
 
 
@@ -59,7 +59,7 @@ let
   #******************************************************************************************************************************************
   """ Set up the bonds on a honeycomb lattice for the interferometry setup and the corresponding two-body interactions in the Hamiltonian"""
   println(repeat("*", 200))
-  println("Setting up the bonds on a honeycomb lattice")
+  println("Setting up bonds in the interferometer")
   lattice = interferometry_lattice_pbc(Nx_unit, Ny_unit)
   number_of_bonds = length(lattice)
   
@@ -192,7 +192,7 @@ let
   #******************************************************************************************************************************************
   """Set up the wedges on a honeycomb lattice for the interferometry setup and the corresponding three-spin interactions in the Hamiltonian"""
   println(repeat("*", 200))
-  println("Setting up the wedges on a honeycomb lattice")
+  println("Setting up three-spin objects on a honeycomb lattice")
   
   # Grab a vector of the three-spin objects in the interferometer
   wedge = interferometry_wedge_pbc(Nx_unit, Ny_unit, N)
@@ -200,6 +200,7 @@ let
 
   
   # Construct the three-spin interactions in the Hamiltonian based on the wedges in the interferometer
+  println("\nSetting up three-spin interactions in the Hamiltonian")
   wedge_count::Int = 0
   for w in wedge
     # Grab the second site in the tuple 
@@ -269,7 +270,9 @@ let
         wedge_count += 1
         @info "Added three-spin term" term = ("Sy", w.s1, "Sz", w.s2, "Sx", w.s3)
       else
-        if (ycoordinate == 6 && abs(w.s3 - w.s1) == 2 * Ny - 2) || (ycoordinate == 1 && abs(w.s3 - w.s1) == 2 * Ny) || (3 <= ycoordinate <= 5 && abs(w.s3 - w.s1) == 2 * Ny - 1)
+        if (ycoordinate == 6 && abs(w.s3 - w.s1) == 2 * Ny - 2) || 
+          (ycoordinate == 1 && abs(w.s3 - w.s1) == 2 * Ny) || 
+          (3 <= ycoordinate <= 5 && abs(w.s3 - w.s1) == 2 * Ny - 1)
           os .+= κ, "Sz", w.s1, "Sx", w.s2, "Sy", w.s3
           wedge_count += 1
           @info "Added three-spin term" term = ("Sz", w.s1, "Sx", w.s2, "Sy", w.s3)
@@ -335,7 +338,6 @@ let
   
   end
   
-
   # Verify three-spin interaction count
   if wedge_count != number_of_wedges
     error("The number of three-spin interactions in the Hamiltonian is not correct! Expected $number_of_wedges, got $wedge_count")
@@ -352,7 +354,6 @@ let
   println("Running DMRG simulations to find the ground-state wavefunction")
 
   
-  
   # Initialize the wavefunction as a random MPS and set up the Hamiltonian as an MPO
   sites = siteinds("S=1/2", N)
   state = [isodd(n) ? "Up" : "Dn" for n in 1:N]
@@ -361,7 +362,7 @@ let
   
   
   # Set up hyperparameters used in the DMRG simulations, including bond dimensions, cutoff etc.
-  nsweeps = 1
+  nsweeps = 5
   maxdim  = [20, 80, 350]
   cutoff  = [1E-10]
   eigsolve_krylovdim = 50
@@ -415,7 +416,6 @@ let
   # Measure the expectation values of the plaquette operators (six-point correlators) around each hexagon
   println(repeat("*", 200))
   println("Measuring the expectation values of the plaquette operators around each hexagon")
-  plaquette_operator = Vector{String}(["Z", "X", "iY", "Z", "X", "iY"])
   plaquette_inds = [
     # --- Right edge  ---
     1  6  12  17  11   5;
@@ -435,10 +435,11 @@ let
     26 32 38  42  37  31;
     27 33 39  43  38  32;
   ]
-
-  
   nplaquettes = size(plaquette_inds, 1)
   plaquette_vals = zeros(Float64, nplaquettes)
+
+  plaquette_operator = Vector{String}(["Z", "X", "iY", "Z", "X", "iY"])
+
 
   @timeit time_machine "plaquette operators" begin
     for idx in 1:nplaquettes
@@ -467,14 +468,6 @@ let
   println(repeat("*", 200))
   println("Summary of results: \n")
   
-  # # Check the variance of the energy
-  # @timeit time_machine "compaute the variance" begin
-  #   H2 = inner(H, ψ, H, ψ)
-  #   E₀ = inner(ψ', H, ψ)
-  #   variance = H2 - E₀^2
-  # end
-  # println("Variance of the energy is $variance")
-  # println("")
   
   # Check the expectation values of the plaquette operators
   println("\nExpectation values of the plaquette operators:")
@@ -486,13 +479,24 @@ let
   @show linkdims(ψ)
  
 
+  # # Check the variance of the energy
+  # @timeit time_machine "compaute the variance" begin
+  #   H2 = inner(H, ψ, H, ψ)
+  #   E₀ = inner(ψ', H, ψ)
+  #   variance = H2 - E₀^2
+  # end
+  # println("Variance of the energy is $variance")
+  # println("")
+
+
+
   # # Check one-point functions
   # println("Expectation values of one-point functions <Sx>, <Sy>, and <Sz>:")
   # @show Sx
   # @show Sy
   # @show Sz
 
-  # println(repeat("*", 200), "\n")
+  println(repeat("*", 200), "\n")
   #******************************************************************************************************************************************
   #******************************************************************************************************************************************
 
