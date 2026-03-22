@@ -526,7 +526,7 @@ function honeycomb_armchair_wedge(Nx::Int, Ny::Int; yperiodic=false)
 end
 
 
-# 05/21/2025
+# 3/22/2026
 # Implement the wedge object to introduce the three-body interaction on the XC geometry
 function honeycomb_twist_wedge(Nx::Int, Ny::Int; yperiodic=false)
 	"""
@@ -583,5 +583,75 @@ function honeycomb_twist_wedge(Nx::Int, Ny::Int; yperiodic=false)
 	end
 
 	# @show wedge
+	return wedge
+end
+
+
+# 3/22/2026
+# Implement the three-spin terms on the zigzag geometry without a twist using Cstyle ordering
+function honeycomb_Cstyle_wedge(Nx::Int, Ny::Int; yperiodic=false)
+	"""Use the zigzag geometry without a twist and Cstyle ordering"""
+	
+	yperiodic = yperiodic && (Ny > 2)
+	N = Nx * Ny									# Number of sites on the lattice
+	Nwedge = 3 * N - 4 * Ny		                # Number of three-spin interaction terms
+	wedge = Vector{WedgeBond}(undef, Nwedge)
+
+	# Set up the three-spin interaction terms
+	count = 0
+	for n in 1 : N
+		# Calculate the (x, y) coordinates of the site n based on C-style ordering
+		tmp = div(n - 1, 2 * Ny)
+		x = 2 * tmp + mod(n - 1, 2) + 1
+		y = mod(div(n - 1, 2), Ny) + 1
+
+		
+		# Set up the three-spin interaction terms based on the (x, y) coordinates of the site n
+		if isodd(x)
+			if y == 1
+				wedge[count += 1] = WedgeBond(n + 1, n, n + 2 * Ny - 1)
+			else
+				wedge[count += 1] = WedgeBond(n - 1, n, n + 1)
+			end
+
+			if x != 1
+				wedge[count += 1] = WedgeBond(n - 2 * Ny + 1, n, n + 1)
+				if y == 1
+					wedge[count += 1] = WedgeBond(n - 2 * Ny + 1, n, n + 2 * Ny - 1)
+				else
+					wedge[count += 1] = WedgeBond(n - 2 * Ny + 1, n, n - 1)
+				end
+			end
+		else
+			if y == Ny 
+				wedge[count += 1] = WedgeBond(n - 2 * Ny + 1, n, n - 1)
+			else
+				wedge[count += 1] = WedgeBond(n - 1, n, n + 1)
+			end
+
+			if x != Nx
+				wedge[count += 1] = WedgeBond(n - 1, n, n + 2 * Ny - 1)
+				if y == Ny 
+					wedge[count += 1] = WedgeBond(n - 2 * Ny + 1, n, n + 2 * Ny - 1)
+				else
+					wedge[count += 1] = WedgeBond(n + 1, n, n + 2 * Ny - 1)
+				end
+			end
+		end
+	end
+
+
+	# Check if the number of wedges generated matches the expected number	
+	if length(wedge) != Nwedge
+		error("The number of wedges generated does not match the expected number.")
+	end
+
+	
+	# # Display the three-spin interaction terms for debugging purposes
+	# for (_, w) in enumerate(wedge)
+	# 	@show w.s1, w.s2, w.s3
+	# end
+	# # @show wedge
+
 	return wedge
 end
