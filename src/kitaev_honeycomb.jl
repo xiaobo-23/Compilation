@@ -41,15 +41,17 @@ const time_machine = TimerOutput()
 
 
 let
-  # Set up the two-body interaction strengths in the Kitaev Hamiltonian
-  Jx, Jy, Jz = 1.0, 1.0, 1.0
-  
+  # Set up interactions strengths in the Kitaev Hamiltonian
+  Jx, Jy, Jz = 1.0, 1.0, 1.0  # Strengths of the two-body interaction terms
+  κ = -0.4                    # Strength of the three-spin interaction term
 
-  #*****************************************************************************************************************************************************
-  # honeycomb lattice using zigzag geometry with periodic boundary condition along the y direction and 
-  # open boundary condition along the x direction
+  """
+    Initialize a honeycomb lattice using zigzag geometry using the Cstyle ordering scheme
+    Use PBC along the y direction and OBC along the x direction
+  """
   x_periodic = false
   
+  # Generate the list of two-body bonds in the honeycomb lattice
   if x_periodic
     lattice = honeycomb_lattice_rings_pbc(Nx, Ny; yperiodic=true)
   else
@@ -57,15 +59,20 @@ let
   end 
   number_of_bonds = length(lattice)
  
-  # for (idx, tmp) in enumerate(lattice)
+  # for (_, tmp) in enumerate(lattice)
   #   @show tmp.s1, tmp.s2
   # end
-  #*****************************************************************************************************************************************************
+
+  # Generate the list of three-spin interaction terms in the honeycomb lattice
+  wedge = honeycomb_Cstyle_wedge(Nx, Ny; yperiodic=true)
+
+  # for (_, tmp) in enumerate(wedge)
+  #   @show tmp.s1, tmp.s2, tmp.s3  
+  # end
   
 
   
-  #*****************************************************************************************************************************************************
-  # Construc the Kitaev Hamiltonian as an MPO using the OpSum interface
+  """Construc the Kitaev Hamiltonian as an MPO using the OpSum interface"""
   os = OpSum()
   
   # Set up the two-body interaction terms in the Hamiltonian
@@ -76,7 +83,6 @@ let
     xcoordinate = 2 * div(b.s1 - 1, 2 * Ny) + (iseven(b.s1) ? 2 : 1)
     ycoordinate = div(mod(b.s1 - 1, 2 * Ny), 2) + 1
     # @show b.s1, xcoordinate, ycoordinate
-
 
     if mod(xcoordinate, 2) == 0
       os .+= -Jy, "Sy", b.s1, "Sy", b.s2
@@ -95,8 +101,71 @@ let
     end
   end
   # @show xbond, ybond, zbond
-  #*****************************************************************************************************************************************************
 
+
+  # Set up the three-spin interaction terms in the Hamiltonian
+  count = 0
+  for w in wedge 
+    # Calculate the (x, y) coordinates of the site n based on C-style ordering
+    tmp = div(w.s2 - 1, 2 * Ny)
+    x = 2 * tmp + mod(w.s2 - 1, 2) + 1
+    y = mod(div(w.s2 - 1, 2), Ny) + 1
+
+    if mod(x, 2) == 1
+      if w.s1 - w.s2 == 1 && w.s3 - w.s2 == 2 * Ny - 1
+        os .+= κ, "Sx", w.s1, "Sy", w.s2, "Sz", w.s3
+        @show w.s1, w.s2, w.s3, "Sx", "Sy", "Sz"
+        count += 1
+      end
+
+      if w.s3 - w.s2 == 1 && w.s2 - w.s1 == 1
+        os .+= κ, "Sz", w.s1, "Sy", w.s2, "Sx", w.s3
+        @show w.s1, w.s2, w.s3, "Sz", "Sy", "Sx"
+        count += 1
+      end 
+
+      if x != 1 && w.s2 - w.s1 == 2 * Ny - 1
+        if w.s3 - w.s2 == 1
+          os .+= κ, "Sy", w.s1, "Sz", w.s2, "Sx", w.s3
+          @show w.s1, w.s2, w.s3, "Sy", "Sz", "Sx"
+          count += 1  
+        else
+          os .+= κ, "Sy", w.s1, "Sx", w.s2, "Sz", w.s3
+          @show w.s1, w.s2, w.s3, "Sy", "Sx", "Sz"
+          count += 1  
+        end
+      end
+    else
+      if w.s3 - w.s2 == w.s2 - w.s1 == 1
+        os .+= κ, "Sx", w.s1, "Sy", w.s2, "Sz", w.s3
+        @show w.s1, w.s2, w.s3, "Sx", "Sy", "Sz"
+        count += 1
+      end
+
+      if w.s2 - w.s3 == 1 && w.s2 - w.s1 == 2 * Ny - 1
+        os .+= κ, "Sz", w.s1, "Sy", w.s2, "Sx", w.s3
+        @show w.s1, w.s2, w.s3, "Sz", "Sy", "Sx"
+        count += 1
+      end
+
+      if x != Nx && w.s3 - w.s2 == 2 * Ny - 1
+        if w.s2 - w.s1 == 1
+          os .+= κ, "Sx", w.s1, "Sz", w.s2, "Sy", w.s3
+          @show w.s1, w.s2, w.s3, "Sx", "Sz", "Sy"
+          count += 1
+        else
+          os .+= κ, "Sz", w.s1, "Sx", w.s2, "Sy", w.s3
+          @show w.s1, w.s2, w.s3, "Sz", "Sx", "Sy"
+          count += 1
+        end
+      end
+    end
+  end
+  @show count 
+
+  if count != length(wedge)
+    error("The number of three-spin interaction terms generated does not match the expected number.")
+  end
 
 
   
@@ -190,7 +259,7 @@ let
   
   
   # Set up the parameters including bond dimensions and truncation error
-  nsweeps = 10
+  nsweeps = 1
   maxdim = [4, 8, 128, 500]
   # maxdim  = [4, 8, 16, 32]
   cutoff  = [1E-10]
@@ -310,9 +379,6 @@ let
   println("\nGround-state energy: $E₀")
   println("\nVariance of the energy is $variance")
   println("\n")
-
-
-
 
   
   # # println("")
