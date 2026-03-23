@@ -187,7 +187,7 @@ let
   
   
   # Set up the parameters including bond dimensions and truncation error
-  nsweeps = 1
+  nsweeps = 10
   maxdim = [4, 8, 128, 500]
   # maxdim  = [4, 8, 16, 32]
   cutoff  = [1E-10]
@@ -334,6 +334,11 @@ let
   println("\n")
 
 
+  println("\nBond dimensions of the obtained MPS:")
+  @show linkdims(ψ)
+  println("\n")
+
+
   # # Print out useful information of physical quantities
   # println("")
   # println("Visualize the optimization history of the energy and bond dimensions:")
@@ -349,14 +354,15 @@ let
   h5open("../data/kitaev_honeycomb_kappa-0.4_Lx4_Ly3.h5", "w") do file
     write(file, "psi", ψ)
     write(file, "E0", energy)
-    write(file, "E0variance", variance)
-    write(file, "Bond", custom_observer.chi)
+    write(file, "variance", variance)
+    write(file, "chi", linkdims(ψ))
     # write(file, "Sz0", Sz₀)
     # write(file, "Sz",  Sz)
     # write(file, "Czz", zzcorr)
-    write(file, "Plaquette", plaquette_evals)
-    write(file, "Loop", loop_evals)
+    write(file, "plaquette", plaquette_evals)
+    write(file, "loop", loop_evals)
   end
+
 
   return
 end
