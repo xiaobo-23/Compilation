@@ -169,84 +169,12 @@ let
 
 
   
-  # #*************************************************************************************************************************************
-  # # Read in an initial state from a MATLAB file
-  # #*************************************************************************************************************************************
-  # chi = [2, 4, 8, 16, fill(32, 15)..., 16, 8, 4, 2]
-  # input_file = matopen("../data/A_chi32_AFM.mat")
-  # input_tensors = read(input_file)
-  # @show typeof(input_tensors)
-  # close(input_file)
+  """
+    Set up the initial MPS state and hyper parameters for the DMRG simulation
+    The initial MPS state is chosen to be a random product state
+  """
 
-
-  # tensor_array = Vector{ITensor}(undef, N) 
-  # prev_index = Index(chi[1], "Link, l=1")
-  # site_index = Index(2, "S=1/2, n=1")
-  # # tensor_array[1] = ITensor(input_tensors["A"][1], prev_index, site_index)
-  # # @show tensor_array[1]
-
-  # tensor_array[1] = random_itensor(ComplexF64, site_index, prev_index)
-  # @show tensor_array[1]
-  # tensor_array[1][site_index => 1, prev_index => 1] = input_tensors["A"][1][1, 1, 1]
-  # tensor_array[1][site_index => 1, prev_index => 2] = input_tensors["A"][1][1, 2, 1]
-  # tensor_array[1][site_index => 2, prev_index => 1] = input_tensors["A"][1][1, 1, 2]
-  # tensor_array[1][site_index => 2, prev_index => 2] = input_tensors["A"][1][1, 2, 2]
-
-  # @show size(input_tensors["A"][1]), input_tensors["A"][1]
-  # @show tensor_array[1]
-
-  # # @show chi
-  # for idx in 2 : N - 1
-  #   next_index = Index(chi[idx], "Link, l=$(idx)")
-  #   site_index = Index(2, "S=1/2, n=$(idx)")
-  #   @show prev_index, next_index, site_index, chi[idx], size(input_tensors["A"][idx])
-  #   tensor_array[idx] = ITensor(input_tensors["A"][idx], prev_index, next_index, site_index)
-  #   prev_index = next_index
-  #   # @show prev_index
-  #   # @show i, j, k = siteinds(ψ₀)[idx], linkind(ψ₀, idx-1), linkind(ψ₀, idx)
-  #   # @show i, j, k
-  # end
-  
-  # site_index = Index(2, "S=1/2, n=$(N)")
-  # # tensor_array[N] = ITensor(input_tensors["A"][N], site_index, prev_index)
-  # # @show tensor_array[N]
-
-  # tensor_array[N] = random_itensor(ComplexF64, site_index, prev_index)
-  # @show tensor_array[N]
-  # tensor_array[N][site_index => 1, prev_index => 1] = input_tensors["A"][N][1, 1, 1]
-  # tensor_array[N][site_index => 1, prev_index => 2] = input_tensors["A"][N][2, 1, 1]
-  # tensor_array[N][site_index => 2, prev_index => 1] = input_tensors["A"][N][1, 1, 2]
-  # tensor_array[N][site_index => 2, prev_index => 2] = input_tensors["A"][N][2, 1, 2]
-
-  # @show tensor_array[N]
-  # @show size(input_tensors["A"][N]), input_tensors["A"][N]
-
-  # ψ₀ = MPS(tensor_array)  
-  # sites = siteinds(ψ₀)
-  # H = MPO(os, sites)
-  # E₀ = inner(ψ₀', H, ψ₀)
-  # @show E₀
-
-  # # Check the variance of the energy
-  # @timeit time_machine "compaute the variance" begin
-  #   H2 = inner(H, ψ₀, H, ψ₀)
-  #   E₀ = inner(ψ₀', H, ψ₀)
-  #   variance = H2 - E₀^2
-  # end
-  # println("")
-  # println("")
-  # println("Energy of the read-in state:")
-  # @show E₀
-  # println("Variance of the energy is $variance")
-  # println("")
-  # #*************************************************************************************************************************************
-  # #*************************************************************************************************************************************
-
-  
-  
-  #*****************************************************************************************************************************************************
-  # Increase the maximum dimension of Krylov space used to locally solve the eigenvalues problem
-  # Initialize wavefunction to a random MPS with same quantum number as `state`
+  # Set up the wave function as an MPS with random entries
   sites = siteinds("S=1/2", N; conserve_qns=false)
   state = [isodd(n) ? "Up" : "Dn" for n in 1:N]
   # ψ₀ = MPS(sites, state)
@@ -285,138 +213,150 @@ let
   @timeit time_machine "dmrg simulation" begin
     energy, ψ = dmrg(H, ψ₀; nsweeps, maxdim, cutoff, which_decomp, eigsolve_krylovdim, observer = custom_observer)
   end
-  #*****************************************************************************************************************************************************
 
 
   
-  # # Measure local observables (one-point functions) after finish the DMRG simulation
-  # @timeit time_machine "one-point functions" begin
-  #   Sx = expect(ψ, "Sx", sites = 1 : N)
-  #   Sy = expect(ψ, "iSy", sites = 1 : N)
-  #   Sz = expect(ψ, "Sz", sites = 1 : N)
-  # end
+  """
+    Measure local and non-local observables after finishing the DMRG simulation
+  """
+  # Measure local observables (one-point functions) 
+  @timeit time_machine "one-point functions" begin
+    Sx = expect(ψ, "Sx", sites = 1 : N)
+    Sy = expect(ψ, "iSy", sites = 1 : N)
+    Sz = expect(ψ, "Sz", sites = 1 : N)
+  end
 
-  # # @timeit time_machine to "two-point functions" begin
-  # #   xxcorr = correlation_matrix(ψ, "Sx", "Sx", sites = 1 : N)
-  # #   yycorr = correlation_matrix(ψ, "Sy", "Sy", sites = 1 : N)
-  # #   zzcorr = correlation_matrix(ψ, "Sz", "Sz", sites = 1 : N)
-  # # end
-
-
-  # # Generate the indices for all loop operators along the cylinder
-  # loop_operator = Vector{String}(["iY", "X", "iY", "X", "iY", "X", "iY", "X"])  # Hard-coded for width-4 cylinders
-  # loop_indices = LoopListArmchair(Nx_unit, Ny_unit, "armchair", "y")  
-  # # @show loop_indices
-
-  # # Generate the plaquette indices for all the plaquettes in the cylinder
-  # plaquette_operator = Vector{String}(["iY", "Z", "X", "X", "Z", "iY"])
-  # plaquette_indices = PlaquetteListArmchair(Nx_unit, Ny_unit, "armchair", false)
-  # # @show plaquette_indices
+ 
+  # Measure two-point correlation functions
+  @timeit time_machine "two-point functions" begin
+    xxcorr = correlation_matrix(ψ, "Sx", "Sx", sites = 1 : N)
+    yycorr = correlation_matrix(ψ, "Sy", "Sy", sites = 1 : N)
+    zzcorr = correlation_matrix(ψ, "Sz", "Sz", sites = 1 : N)
+  end
 
 
-  # # # Compute the eigenvalues of plaquette operators
-  # # # normalize!(ψ)
-  # # @timeit time_machine "plaquette operators" begin
-  # #   W_operator_eigenvalues = zeros(Float64, size(plaquette_indices, 1))
-    
-  # #   # Compute the eigenvalues of the plaquette operator
-  # #   for index in 1 : size(plaquette_indices, 1)
-  # #     @show plaquette_indices[index, :]
-  # #     os_w = OpSum()
-  # #     os_w += plaquette_operator[1], plaquette_indices[index, 1], 
-  # #       plaquette_operator[2], plaquette_indices[index, 2], 
-  # #       plaquette_operator[3], plaquette_indices[index, 3], 
-  # #       plaquette_operator[4], plaquette_indices[index, 4], 
-  # #       plaquette_operator[5], plaquette_indices[index, 5], 
-  # #       plaquette_operator[6], plaquette_indices[index, 6]
-  # #     W = MPO(os_w, sites)
-  # #     W_operator_eigenvalues[index] = -1.0 * real(inner(ψ', W, ψ))
-  # #     # @show inner(ψ', W, ψ) / inner(ψ', ψ)
-  # #   end
-  # # end
-  # # @show W_operator_eigenvalues
+
+  """Compute the expectation values of the noncontractible loop operator along the y direction with PBC"""
+  # Generate the operators for the noncontractible loop operators along the y direction with PBC  
+  loop_op = Vector{String}(["iY", "iY", "iY", "iY", "iY", "iY"])  # Hard-coded for width-three cylinders
   
-  # # # Compute the eigenvalues of the loop operators 
-  # # # The loop operators depend on the width of the cylinder  
-  # # @timeit time_machine "loop operators" begin
-  # #   yloop_eigenvalues = zeros(Float64, size(loop_indices)[1])
-    
-  # #   # Compute eigenvalues of the loop operators in the direction with PBC.
-  # #   for index in 1 : size(loop_indices)[1]
-  # #     ## Construct loop operators along the y direction with PBC
-  # #     os_wl = OpSum()
-  # #     os_wl += loop_operator[1], loop_indices[index, 1], 
-  # #       loop_operator[2], loop_indices[index, 2], 
-  # #       loop_operator[3], loop_indices[index, 3], 
-  # #       loop_operator[4], loop_indices[index, 4], 
-  # #       loop_operator[5], loop_indices[index, 5], 
-  # #       loop_operator[6], loop_indices[index, 6]
+  # Generate a list of indices for the noncontractible loop operators 
+  loop_inds = zeros(Int, Nx_unit, 6)  # Each row corresponds to a loop operator along the y direction with PBC
+  for idx in 1 : Nx_unit
+    loop_inds[idx, :] = 6 * (idx - 1) .+ (1 : 6)
+  end
+  # @show loop_inds
 
-  # #     Wl = MPO(os_wl, sites)
-  # #     yloop_eigenvalues[index] = real(inner(ψ', Wl, ψ))
-  # #   end
-  # # end
+  # Compute the expectation values of the noncontractible loop operators
+  loop_evals = zeros(Float64, Nx_unit)
+  
+  @timeit time_machine "LOOP OPERATOR" begin
+    for idx in 1 : Nx_unit
+      ## Construct loop operators along the y direction with PBC
+      os_wl = OpSum()
+      os_wl += loop_op[1], loop_inds[idx, 1], 
+        loop_op[2], loop_inds[idx, 2], 
+        loop_op[3], loop_inds[idx, 3], 
+        loop_op[4], loop_inds[idx, 4], 
+        loop_op[5], loop_inds[idx, 5], 
+        loop_op[6], loop_inds[idx, 6]
+
+      WL = MPO(os_wl, sites)
+      loop_evals[idx] = real(inner(ψ', WL, ψ))
+    end
+  end
+  # @show loop_evals
+
 
   
+  
+  """Compute the expectation values of the plaquette operators defined on the hexagonal plaquettes"""
+  # Generate the seqeunce of operators for the plaquette operators defined on the hexagonal plaquettes  
+  plaquette_op = Vector{String}(["iY", "Z", "X", "X", "Z", "iY"])
+  
+  
+  # Generate a list of indices for each hexagonal plaquette
+  plaquette_inds = [1  2  7  6  11 12;
+                    3  4  9  2  7  8;
+                    5  6  11 4  9  10;
+                    7  8  13 12 17 18;
+                    9  10 15 8  13 14;
+                    11 12 17 10 15 16;
+                    13 14 19 18 23 24;
+                    15 16 21 14 19 20;
+                    17 18 23 16 21 22]
+  @show plaquette_inds
+  
+ 
+  # Compute the expectation value of the plaquette operator defined on each hexagonal plaquette
+  plaquette_evals = zeros(Float64, size(plaquette_inds, 1))
+  @timeit time_machine "PLAQUETTE OPERATORS" begin
+    for idx in 1 : size(plaquette_inds, 1)
+      os_wp = OpSum()
+      os_wp += plaquette_op[1], plaquette_inds[idx, 1], 
+        plaquette_op[2], plaquette_inds[idx, 2], 
+        plaquette_op[3], plaquette_inds[idx, 3], 
+        plaquette_op[4], plaquette_inds[idx, 4], 
+        plaquette_op[5], plaquette_inds[idx, 5], 
+        plaquette_op[6], plaquette_inds[idx, 6]
+      
+        WP = MPO(os_wp, sites)
+      plaquette_evals[idx] = -1.0 * real(inner(ψ', WP, ψ))
+    end
+  end
+  @show plaquette_evals
+  
+  
+  """
+    Print out the results of the DMRG simulation and save the results to an HDF5 file for later use in quantum circuit compilation  
+  """
+
+  # Check the variance of the energy to see if the obtained state is close to an eigenstate of the Hamiltonian
+  @timeit time_machine "compaute the variance" begin
+    H2 = inner(H, ψ, H, ψ)
+    E₀ = inner(ψ', H, ψ)
+    variance = H2 - E₀^2
+  end
+
+  
+  println("\nGround-state energy: $E₀")
+  println("\nVariance of the energy is $variance")
+  println("\n")
+
+  
+  println("\nExpectation values of the plaquette operator on each hexagonal plaquette:")
+  @show plaquette_evals
+  println("\n")
+
+
+  println("\nExpectation values of the loop operator defined along each loop:")
+  @show loop_evals
+  println("\n")
+
+
   # # Print out useful information of physical quantities
   # println("")
   # println("Visualize the optimization history of the energy and bond dimensions:")
   # @show custom_observer.ehistory_full
   # @show custom_observer.ehistory
   # @show custom_observer.chi
-  # # @show number_of_bonds, energy / number_of_bonds
-  # # @show N, energy / N
   # println("")
 
-  
 
-  # Check the variance of the energy
-  @timeit time_machine "compaute the variance" begin
-    H2 = inner(H, ψ, H, ψ)
-    E₀ = inner(ψ', H, ψ)
-    variance = H2 - E₀^2
+
+  # Save the results to an HDF5 file for later use in quantum circuit compilation
+  @show time_machine
+  h5open("../data/kitaev_honeycomb_kappa-0.4_Lx4_Ly3.h5", "w") do file
+    write(file, "psi", ψ)
+    write(file, "E0", energy)
+    write(file, "E0variance", variance)
+    write(file, "Bond", custom_observer.chi)
+    # write(file, "Sz0", Sz₀)
+    # write(file, "Sz",  Sz)
+    # write(file, "Czz", zzcorr)
+    write(file, "Plaquette", plaquette_evals)
+    write(file, "Loop", loop_evals)
   end
-  println("\nGround-state energy: $E₀")
-  println("\nVariance of the energy is $variance")
-  println("\n")
-
-  
-  # # println("")
-  # # println("Eigenvalues of the plaquette operator:")
-  # # @show W_operator_eigenvalues
-  # # println("")
-
-  # # print("")
-  # # println("Eigenvalues of the loop operator(s):")
-  # # @show yloop_eigenvalues
-  # # println("")
-
-  # # println("")
-  # # println("Eigenvalues of the twelve-point correlator near the first vacancy:")
-  # # @show order_parameter
-  # # println("")
-
-  
-  # @show time_machine
-  # h5open("../data/kitaev_honeycomb_Lx4_Ly3.h5", "w") do file
-  #   write(file, "psi", ψ)
-  #   write(file, "E0", energy)
-  #   write(file, "E0variance", variance)
-  #   write(file, "Ehist", custom_observer.ehistory)
-  #   write(file, "Bond", custom_observer.chi)
-  #   # write(file, "Entropy", SvN)
-  #   # write(file, "Sx0", Sx₀)
-  #   # write(file, "Sx",  Sx)
-  #   # write(file, "Cxx", xxcorr)
-  #   # write(file, "Sy0", Sy₀)
-  #   # write(file, "Sy", Sy)
-  #   # write(file, "Cyy", yycorr)
-  #   # write(file, "Sz0", Sz₀)
-  #   # write(file, "Sz",  Sz)
-  #   # write(file, "Czz", zzcorr)
-  #   # write(file, "Plaquette", W_operator_eigenvalues)
-  #   # write(file, "Loop", yloop_eigenvalues)
-  # end
 
   return
 end
