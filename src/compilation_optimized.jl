@@ -31,8 +31,8 @@ OMP_NUM_THREADS = 8
 const N  = 24  # Total number of qubits
 const J₁ = 1.0
 const τ = 1.0
-const cutoff = 1e-8
-const nsweeps = 50
+const cutoff = 1e-6
+const nsweeps = 80
 # const time_machine = TimerOutput()  # Timing and profiling
 
 
@@ -64,6 +64,31 @@ let
   # @show ψ₀
 
   
+  # Applying projection operators ∏ₚ(I + Wₚ) the product state 
+  plaquette_indices = [1  2  7  6  11 12;
+                      3  4  9  2  7  8;
+                      5  6  11 4  9  10;
+                      7  8  13 12 17 18;
+                      9  10 15 8  13 14;
+                      11 12 17 10 15 16;
+                      13 14 19 18 23 24;
+                      15 16 21 14 19 20;
+                      17 18 23 16 21 22]
+  
+  projection = ITensor[]
+  for idx in 1 : size(plaquette_indices, 1)
+    tmp = plaquette_indices[idx, :]
+    s₁, s₂, s₃, s₄, s₅, s₆ = sites[tmp[1]], sites[tmp[2]], sites[tmp[3]], sites[tmp[4]], sites[tmp[5]], sites[tmp[6]]
+    # @show s₁, s₂, s₃, s₄, s₅, s₆
+
+    hj = op("Id", s₁) * op("Id", s₂) * op("Id", s₃) * op("Id", s₄) * op("Id", s₅) * op("Id", s₆) +
+      op("Sy", s₁) * op("Sz", s₂) * op("Sx", s₃) * op("Sx", s₄) * op("Sz", s₅) * op("Sy", s₆)
+    push!(projection, hj)
+  end
+
+  ψ₀ = apply(projection, ψ₀; cutoff=cutoff)
+  
+
   # Measure local observables (one-point functions)
   Sx₀, Sy₀, Sz₀ = zeros(Float64, N), zeros(ComplexF64, N), zeros(Float64, N)
   Sx₀ = expect(ψ₀, "Sx", sites = 1 : N)
@@ -98,9 +123,19 @@ let
                   [[4, 9], [10, 15], [16, 21]], 
                   [[6, 11], [12, 17], [18, 23]], 
                   [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24]],
-                  [[2, 3], [4, 5], [8, 9], [10, 11], [14, 15], [16, 17], [20, 21], [22, 23]],
-                  [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24]],
-                  [[2, 3], [4, 5], [8, 9], [10, 11], [14, 15], [16, 17], [20, 21], [22, 23]]
+                  [[2, 3], [4, 5], [8, 9], [10, 11], [14, 15], [16, 17], [20, 21], [22, 23]], 
+                  [[1, 6], [7, 12], [13, 18], [19, 24]], 
+                  [[2, 7], [8, 13], [14, 19]], 
+                  [[4, 9], [10, 15], [16, 21]], 
+                  [[6, 11], [12, 17], [18, 23]], 
+                  # [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24]],
+                  # [[2, 3], [4, 5], [8, 9], [10, 11], [14, 15], [16, 17], [20, 21], [22, 23]],
+                  # [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24]],
+                  # [[2, 3], [4, 5], [8, 9], [10, 11], [14, 15], [16, 17], [20, 21], [22, 23]],
+                  # [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24]],
+                  # [[2, 3], [4, 5], [8, 9], [10, 11], [14, 15], [16, 17], [20, 21], [22, 23]],
+                  # [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24]],
+                  # [[2, 3], [4, 5], [8, 9], [10, 11], [14, 15], [16, 17], [20, 21], [22, 23]]
                 ]
 
 
@@ -123,23 +158,23 @@ let
 
   #*****************************************************************************************************
   #*****************************************************************************************************
-#   # Create the target MPS by applying the sequence of two-qubit gates to the original MPS
-#   ψ_T = deepcopy(ψ₀)               
-#   for idx in 1 : length(gates)         
-#     ψ_T = apply(gates[idx], ψ_T; cutoff=cutoff)
-#   end
-#   normalize!(ψ_T)
+  # Create the target MPS by applying the sequence of two-qubit gates to the original MPS
+  ψ_T = deepcopy(ψ₀)               
+  for idx in 1 : length(gates)         
+    ψ_T = apply(gates[idx], ψ_T; cutoff=cutoff)
+  end
+  normalize!(ψ_T)
   
 
   
-#   Sx_R = expect(ψ_T, "Sx", sites = 1 : N)
-#   Sz_R = expect(ψ_T, "Sz", sites = 1 : N)
-#   println("\nAfter applying the sequence of two-qubit gates:")
-#   @show Sx₀
-#   @show Sx_R
-#   println("\n")
-  #*****************************************************************************************************
-  #*****************************************************************************************************
+  Sx_R = expect(ψ_T, "Sx", sites = 1 : N)
+  Sz_R = expect(ψ_T, "Sz", sites = 1 : N)
+  println("\nAfter applying the sequence of two-qubit gates:")
+  @show Sx₀
+  @show Sx_R
+  println("\n")
+  # *****************************************************************************************************
+  # *****************************************************************************************************
 
 
 
@@ -232,7 +267,7 @@ let
   # @show reference 
   
   
-  output_filename = "data/kitaev_compilation_kappa-0.4_N$(N)_l3.h5"
+  output_filename = "data/kitaev_compilation_kappa-0.4_N$(N)_l0_projected.h5"
   h5open(output_filename, "w") do file
     write(file, "cost function", cost_function)
     write(file, "reference", reference)
