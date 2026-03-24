@@ -22,28 +22,32 @@ MKL_NUM_THREADS = 8
 OPENBLAS_NUM_THREADS = 8
 OMP_NUM_THREADS = 8
 
-
 # Monitor the number of threads used by BLAS and LAPACK
-@show BLAS.get_config()
-@show BLAS.get_num_threads()
+@info "BLAS configuration" BLAS.get_config(), BLAS.get_num_threads()
 
 
-const N  = 24  # Total number of qubits
+
+# Set up the parameters for the optimization of two-qubit gates
+const N = 24                           # Total number of qubits
 const J₁ = 1.0
 const τ = 1.0
 const cutoff = 1e-6
-const nsweeps = 80
-# const time_machine = TimerOutput()  # Timing and profiling
+const nsweeps = 50
+# const time_machine = TimerOutput()     # Timing and profiling
+
+
 
 
 let
-  #*****************************************************************************************************
-  #*****************************************************************************************************
+  """
+    Compile the wave function of many-body Hamiltonian by optimizing the parameters of two-qubit gates 
+    to apprximate the target MPS
+  """
+  println("\n")
   println(repeat("#", 200))
-  println("Optimize two-qubit gates to approximate the time evolution operator")
+  println("Optimize two-qubit gates to approximate the wave function of the Kitaev model....")
   
-  
-  # Read in the target MPS as the ground-state wave function of many-body Hamiltonian
+  # Read in the target MPS which is the ground-state wave function of many-body Hamiltonian
   # e.g. the Heisenberg model; the Kitaev model 
   # file = h5open("data/heisenberg_n12.h5", "r")
   # ψ_T = read(file, "Psi", MPS)
@@ -55,64 +59,71 @@ let
   close(file)
 
 
-  # Initialize the original random MPS
+  # Initialize the original MPS in a product state 
   Random.seed!(12367)
   # sites = siteinds("S=1/2", N; conserve_qns=false)
   state = [isodd(n) ? "Up" : "Dn" for n in 1:N]
-  # ψ₀ = random_mps(sites, state; linkdims=8)   # Initialize the original random MPS
   ψ₀ = MPS(sites, state)                        # Initialize a Néel state MPS
-  # @show ψ₀
+  # ψ₀ = random_mps(sites, state; linkdims=8)   # Initialize the original random MPS
+  # @show linkdims(ψ₀)
 
-  
-  # Applying projection operators ∏ₚ(I + Wₚ) the product state 
-  plaquette_indices = [1  2  7  6  11 12;
-                      3  4  9  2  7  8;
-                      5  6  11 4  9  10;
-                      7  8  13 12 17 18;
-                      9  10 15 8  13 14;
-                      11 12 17 10 15 16;
-                      13 14 19 18 23 24;
-                      15 16 21 14 19 20;
-                      17 18 23 16 21 22]
+
+  """Applying the projection operators ∏ₚ(I + Wₚ) to the original MPS"""
+  indices = [1  2  7  6  11 12; 3  4  9  2  7  8; 5  6  11 4  9  10; 7  8  13 12 17 18; 9  10 15 8  13 14;
+      11 12 17 10 15 16; 13 14 19 18 23 24; 15 16 21 14 19 20; 17 18 23 16 21 22]
   
   projection = ITensor[]
-  for idx in 1 : size(plaquette_indices, 1)
-    tmp = plaquette_indices[idx, :]
+  for idx in 1 : size(indices, 1)
+    tmp = indices[idx, :]
     s₁, s₂, s₃, s₄, s₅, s₆ = sites[tmp[1]], sites[tmp[2]], sites[tmp[3]], sites[tmp[4]], sites[tmp[5]], sites[tmp[6]]
-    # @show s₁, s₂, s₃, s₄, s₅, s₆
-
-    hj = op("Id", s₁) * op("Id", s₂) * op("Id", s₃) * op("Id", s₄) * op("Id", s₅) * op("Id", s₆) +
-      op("Sy", s₁) * op("Sz", s₂) * op("Sx", s₃) * op("Sx", s₄) * op("Sz", s₅) * op("Sy", s₆)
+    
+    hj = 1/sqrt(2) * op("Id", s₁) * op("Id", s₂) * op("Id", s₃) * op("Id", s₄) * op("Id", s₅) * op("Id", s₆) +
+      1/sqrt(2) * op("Y", s₁) * op("Z", s₂) * op("X", s₃) * op("X", s₄) * op("Z", s₅) * op("Y", s₆)
     push!(projection, hj)
   end
 
   ψ₀ = apply(projection, ψ₀; cutoff=cutoff)
-  
+  # @show linkdims(ψ₀)
 
-  # Measure local observables (one-point functions)
-  Sx₀, Sy₀, Sz₀ = zeros(Float64, N), zeros(ComplexF64, N), zeros(Float64, N)
-  Sx₀ = expect(ψ₀, "Sx", sites = 1 : N)
-  Sy₀ = -im*expect(ψ₀, "iSy", sites = 1 : N)
-  Sz₀ = expect(ψ₀, "Sz", sites = 1 : N)
+  
+  # # Compute the expectation value of the plaquette operator defined on each hexagonal plaquette
+  # plaquette_evals = zeros(Float64, size(indices, 1))
+  # plaquette_operator = Vector{String}(["iY", "Z", "X", "X", "Z", "iY"])
+ 
+  # for idx in 1 : size(indices, 1)
+  #   os_wp = OpSum()
+  #   os_wp += plaquette_operator[1], indices[idx, 1], 
+  #     plaquette_operator[2], indices[idx, 2], 
+  #     plaquette_operator[3], indices[idx, 3], 
+  #     plaquette_operator[4], indices[idx, 4], 
+  #     plaquette_operator[5], indices[idx, 5], 
+  #     plaquette_operator[6], indices[idx, 6]
+    
+  #     WP = MPO(os_wp, sites)
+  #   plaquette_evals[idx] = -1.0 * real(inner(ψ₀', WP, ψ₀))
+  # end
+  # @show plaquette_evals
+
+  # # # Measure local observables (one-point functions)
+  # Sx₀, Sy₀, Sz₀ = zeros(Float64, N), zeros(ComplexF64, N), zeros(Float64, N)
+  # Sx₀ = expect(ψ₀, "Sx", sites = 1 : N)
+  # Sy₀ = -im*expect(ψ₀, "iSy", sites = 1 : N)
+  # Sz₀ = expect(ψ₀, "Sz", sites = 1 : N)
+
+  # @show Sx₀
+  # @show Sy₀
+  # @show Sz₀
   #*****************************************************************************************************
   #*****************************************************************************************************
   
   
-  
-  #*****************************************************************************************************
-  #*****************************************************************************************************
-  # Construct the sequence of target gates and randomly intiialized gates to be optimized
-  # Define pairs of qubit indices for two-qubit gates 
-  # indices_pairs = [[7, 8], [9, 10], [11, 12]]
+  """
+    Construct the sequence of target gates and randomly intiialized gates to be optimized
+    Define pairs of qubit indices for two-qubit gates 
+  """
   # input_pairs = [
   #                 [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24]],
-  #                 [[2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13], [14, 15], [16, 17], [18, 19], [20, 21], [22, 23]],
-  #                 [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24]],
-  #                 [[2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13], [14, 15], [16, 17], [18, 19], [20, 21], [22, 23]],
-  #                 [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24]],
-  #                 [[2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13], [14, 15], [16, 17], [18, 19], [20, 21], [22, 23]],
-  #                 [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24]],
-  #                 [[2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13], [14, 15], [16, 17], [18, 19], [20, 21], [22, 23]],
+  #                 [[2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13], [14, 15], [16, 17], [18, 19], [20, 21], [22, 23]]
   #               ]
 
   input_pairs = [
@@ -121,21 +132,13 @@ let
                   [[1, 6], [7, 12], [13, 18], [19, 24]], 
                   [[2, 7], [8, 13], [14, 19]], 
                   [[4, 9], [10, 15], [16, 21]], 
-                  [[6, 11], [12, 17], [18, 23]], 
-                  [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24]],
-                  [[2, 3], [4, 5], [8, 9], [10, 11], [14, 15], [16, 17], [20, 21], [22, 23]], 
-                  [[1, 6], [7, 12], [13, 18], [19, 24]], 
-                  [[2, 7], [8, 13], [14, 19]], 
-                  [[4, 9], [10, 15], [16, 21]], 
-                  [[6, 11], [12, 17], [18, 23]], 
+                  [[6, 11], [12, 17], [18, 23]],
                   # [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24]],
-                  # [[2, 3], [4, 5], [8, 9], [10, 11], [14, 15], [16, 17], [20, 21], [22, 23]],
+                  # [[2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13], [14, 15], [16, 17], [18, 19], [20, 21], [22, 23]],
                   # [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24]],
-                  # [[2, 3], [4, 5], [8, 9], [10, 11], [14, 15], [16, 17], [20, 21], [22, 23]],
+                  # [[2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13], [14, 15], [16, 17], [18, 19], [20, 21], [22, 23]],
                   # [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24]],
-                  # [[2, 3], [4, 5], [8, 9], [10, 11], [14, 15], [16, 17], [20, 21], [22, 23]],
-                  # [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24]],
-                  # [[2, 3], [4, 5], [8, 9], [10, 11], [14, 15], [16, 17], [20, 21], [22, 23]]
+                  # [[2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13], [14, 15], [16, 17], [18, 19], [20, 21], [22, 23]],
                 ]
 
 
@@ -156,25 +159,24 @@ let
   
 
 
-  #*****************************************************************************************************
-  #*****************************************************************************************************
-  # Create the target MPS by applying the sequence of two-qubit gates to the original MPS
-  ψ_T = deepcopy(ψ₀)               
-  for idx in 1 : length(gates)         
-    ψ_T = apply(gates[idx], ψ_T; cutoff=cutoff)
-  end
-  normalize!(ψ_T)
+  # #*****************************************************************************************************
+  # #*****************************************************************************************************
+  # # Create the target MPS by applying the sequence of two-qubit gates to the original MPS
+  # ψ_T = deepcopy(ψ₀)               
+  # for idx in 1 : length(gates)         
+  #   ψ_T = apply(gates[idx], ψ_T; cutoff=cutoff)
+  # end
+  # normalize!(ψ_T)
   
 
-  
-  Sx_R = expect(ψ_T, "Sx", sites = 1 : N)
-  Sz_R = expect(ψ_T, "Sz", sites = 1 : N)
-  println("\nAfter applying the sequence of two-qubit gates:")
-  @show Sx₀
-  @show Sx_R
-  println("\n")
-  # *****************************************************************************************************
-  # *****************************************************************************************************
+  # Sx_R = expect(ψ_T, "Sx", sites = 1 : N)
+  # Sz_R = expect(ψ_T, "Sz", sites = 1 : N)
+  # println("\nAfter applying the sequence of two-qubit gates:")
+  # @show Sx₀
+  # @show Sx_R
+  # println("\n")
+  # # *****************************************************************************************************
+  # # *****************************************************************************************************
 
 
 
@@ -259,7 +261,6 @@ let
   end
 
 
-  
   println("\nResults after optimization:")
   @show optimization_trace[1:10]
   @show fidelity_trace[1:10]
