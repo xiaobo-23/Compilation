@@ -32,7 +32,7 @@ const J₁ = 1.0
 const τ = 1.0
 const cutoff = 1e-6
 const nsweeps = 50
-const default_iters = 5
+const default_iters = 5                # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
 # const time_machine = TimerOutput()     # Timing and profiling
 
 
@@ -42,9 +42,10 @@ let
     to approximate the target MPS
   """
 
-  println("\n")
+
   println(repeat("#", 200))
-  println("Optimize two-qubit gates to approximate the wave function of the Kitaev model....")
+  println(repeat("#", 200))
+  println("\nSET UP AND OPTIMIZE TWO-QUBIT GATES TO VARIATIONALLY COMPILE THE WAVE FUNCTION OF THE KITAEV MODEL...")
   
   # Read in the target MPS which is the ground-state wave function of many-body Hamiltonian
   # e.g. the Heisenberg model; the Kitaev model 
@@ -68,23 +69,29 @@ let
   # @show linkdims(ψ₀)
 
 
-  # """Applying the projection operators ∏ₚ(I + Wₚ) to the original MPS"""
-  # indices = [1  2  7  6  11 12; 3  4  9  2  7  8; 5  6  11 4  9  10; 7  8  13 12 17 18; 9  10 15 8  13 14;
-  #     11 12 17 10 15 16; 13 14 19 18 23 24; 15 16 21 14 19 20; 17 18 23 16 21 22]
+
+  """Applying projectors ∏ₚ(1 + Wₚ) to the Neel state MPS"""
+  indices = [1  2  7  6  11 12; 3  4  9  2  7  8; 5  6  11 4  9  10; 7  8  13 12 17 18; 9  10 15 8  13 14;
+      11 12 17 10 15 16; 13 14 19 18 23 24; 15 16 21 14 19 20; 17 18 23 16 21 22]
   
-  # projection = ITensor[]
-  # for idx in 1 : size(indices, 1)
-  #   tmp = indices[idx, :]
-  #   s₁, s₂, s₃, s₄, s₅, s₆ = sites[tmp[1]], sites[tmp[2]], sites[tmp[3]], sites[tmp[4]], sites[tmp[5]], sites[tmp[6]]
+  projection = ITensor[]
+  for idx in 1 : size(indices, 1)
+    tmp = indices[idx, :]
+    s₁, s₂, s₃, s₄, s₅, s₆ = sites[tmp[1]], sites[tmp[2]], sites[tmp[3]], sites[tmp[4]], sites[tmp[5]], sites[tmp[6]]
     
-  #   hj = 1/sqrt(2) * op("Id", s₁) * op("Id", s₂) * op("Id", s₃) * op("Id", s₄) * op("Id", s₅) * op("Id", s₆) +
-  #     1/sqrt(2) * op("Y", s₁) * op("Z", s₂) * op("X", s₃) * op("X", s₄) * op("Z", s₅) * op("Y", s₆)
-  #   push!(projection, hj)
-  # end
+    hj = 1/sqrt(2) * op("Id", s₁) * op("Id", s₂) * op("Id", s₃) * op("Id", s₄) * op("Id", s₅) * op("Id", s₆) +
+      1/sqrt(2) * op("Y", s₁) * op("Z", s₂) * op("X", s₃) * op("X", s₄) * op("Z", s₅) * op("Y", s₆)
+    push!(projection, hj)
+  end
 
-  # ψ₀ = apply(projection, ψ₀; cutoff=cutoff)
-  # @show linkdims(ψ₀)
-
+  ψ₀ = apply(projection, ψ₀; cutoff=cutoff)
+  
+  println("\nInitial state bond dimensions after applying projectors: ")
+  @show linkdims(ψ₀)
+  println("\nThe overlap between the projected initial state and the target state is: ")
+  @show inner(ψ₀, ψ_T)
+  println("\n")
+  
   
   # # Compute the expectation value of the plaquette operator defined on each hexagonal plaquette
   # plaquette_evals = zeros(Float64, size(indices, 1))
@@ -155,103 +162,103 @@ let
 
 
 
-  """Optimize the set of two-qubit gates using an iterative sweeping procedure"""
-  cost_function = zeros(Float64, nsweeps)
-  reference = zeros(Float64, nsweeps)
-  optimization_trace = Float64[]
-  fidelity_trace = Float64[]
+  # """Optimize the set of two-qubit gates using an iterative sweeping procedure"""
+  # cost_function = zeros(Float64, nsweeps)
+  # reference = zeros(Float64, nsweeps)
+  # optimization_trace = Float64[]
+  # fidelity_trace = Float64[]
   
 
-  for iteration in 1 : nsweeps 
-    # Optimize each layer of the two-qubit gate in a forward sweeping order 
-    for layer_idx in 1 : length(circuit_gates)
-      optimization_gates = circuit_gates[layer_idx]
-      idx_pairs = input_pairs[layer_idx]
+  # for iteration in 1 : nsweeps 
+  #   # Optimize each layer of the two-qubit gate in a forward sweeping order 
+  #   for layer_idx in 1 : length(circuit_gates)
+  #     optimization_gates = circuit_gates[layer_idx]
+  #     idx_pairs = input_pairs[layer_idx]
 
       
-      # Compress the optimization circuit from the initial MPS side
-      ψ_left = deepcopy(ψ₀)
-      if layer_idx > 1
-        for idx in 1 : layer_idx - 1
-          ψ_left = apply(circuit_gates[idx], ψ_left; cutoff=cutoff)
-        end
-        normalize!(ψ_left)
-      end
-      # ψ_left = ψ_ket_collection[layer_idx]
+  #     # Compress the optimization circuit from the initial MPS side
+  #     ψ_left = deepcopy(ψ₀)
+  #     if layer_idx > 1
+  #       for idx in 1 : layer_idx - 1
+  #         ψ_left = apply(circuit_gates[idx], ψ_left; cutoff=cutoff)
+  #       end
+  #       normalize!(ψ_left)
+  #     end
+  #     # ψ_left = ψ_ket_collection[layer_idx]
       
       
-      # Compress the optimization circuit from the target MPS side 
-      ψ_right = deepcopy(ψ_T)
-      if layer_idx < length(circuit_gates)
-        for tmp_idx in length(circuit_gates):-1:layer_idx + 1
-          temporary_gates = deepcopy(circuit_gates[tmp_idx])
-          for gate_idx in 1 : length(temporary_gates)
-            temporary_gates[gate_idx] = dag(temporary_gates[gate_idx])
-            swapprime!(temporary_gates[gate_idx], 0 => 1)
-          end
-          ψ_right = apply(temporary_gates, ψ_right; cutoff=cutoff)
-        end
-        normalize!(ψ_right)  
-      end
-      # ψ_right = ψ_bra_collection[layer_idx]
+  #     # Compress the optimization circuit from the target MPS side 
+  #     ψ_right = deepcopy(ψ_T)
+  #     if layer_idx < length(circuit_gates)
+  #       for tmp_idx in length(circuit_gates):-1:layer_idx + 1
+  #         temporary_gates = deepcopy(circuit_gates[tmp_idx])
+  #         for gate_idx in 1 : length(temporary_gates)
+  #           temporary_gates[gate_idx] = dag(temporary_gates[gate_idx])
+  #           swapprime!(temporary_gates[gate_idx], 0 => 1)
+  #         end
+  #         ψ_right = apply(temporary_gates, ψ_right; cutoff=cutoff)
+  #       end
+  #       normalize!(ψ_right)  
+  #     end
+  #     # ψ_right = ψ_bra_collection[layer_idx]
       
 
-      println("\n", repeat("#", 200))
-      for _ in 1 : default_iters
-        # Update all two-qubit gates in the forward order
-        println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: up-down sweeping")
-        for idx in 1 : length(idx_pairs)
-          idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
-          @show idx₁, idx₂
-          updated_gate, tmp_trace, tmp_cost = update_single_gate(
-            ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, cutoff
-          )
-          optimization_gates[idx] = updated_gate
-          append!(optimization_trace, tmp_trace)
-          append!(fidelity_trace, tmp_cost)
-        end
-        println("\n")
+  #     println("\n", repeat("#", 200))
+  #     for _ in 1 : default_iters
+  #       # Update all two-qubit gates in the forward order
+  #       println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: up-down sweeping")
+  #       for idx in 1 : length(idx_pairs)
+  #         idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
+  #         @show idx₁, idx₂
+  #         updated_gate, tmp_trace, tmp_cost = update_single_gate(
+  #           ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, cutoff
+  #         )
+  #         optimization_gates[idx] = updated_gate
+  #         append!(optimization_trace, tmp_trace)
+  #         append!(fidelity_trace, tmp_cost)
+  #       end
+  #       println("\n")
         
 
-        # Update all two-qubit gates in the backward order
-        println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: bottom-up sweeping")
-        for idx in length(idx_pairs):-1:1
-          idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
-          @show idx₁, idx₂
-          updated_gate, tmp_trace, tmp_cost = update_single_gate(
-            ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, cutoff
-          )
-          optimization_gates[idx] = updated_gate
-          append!(optimization_trace, tmp_trace)
-          append!(fidelity_trace, tmp_cost)
-        end
-        println("\n")
-      end
+  #       # Update all two-qubit gates in the backward order
+  #       println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: bottom-up sweeping")
+  #       for idx in length(idx_pairs):-1:1
+  #         idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
+  #         @show idx₁, idx₂
+  #         updated_gate, tmp_trace, tmp_cost = update_single_gate(
+  #           ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, cutoff
+  #         )
+  #         optimization_gates[idx] = updated_gate
+  #         append!(optimization_trace, tmp_trace)
+  #         append!(fidelity_trace, tmp_cost)
+  #       end
+  #       println("\n")
+  #     end
 
-      println(repeat("#", 200), "\n")
-    end
-
-
-    # Compute the cost function after each sweep
-    cost_function[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
-    reference[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, gates, cutoff)
-  end
+  #     println(repeat("#", 200), "\n")
+  #   end
 
 
-  println("\nResults after optimization:")
-  @show optimization_trace[1:10]
-  @show fidelity_trace[1:10]
-  @show cost_function
-  # @show reference 
+  #   # Compute the cost function after each sweep
+  #   cost_function[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
+  #   reference[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, gates, cutoff)
+  # end
+
+
+  # println("\nResults after optimization:")
+  # @show optimization_trace[1:10]
+  # @show fidelity_trace[1:10]
+  # @show cost_function
+  # # @show reference 
   
   
-  output_filename = "data/kitaev_compilation_kappa-0.4_N$(N)_l$(auxiliary_layer).h5"
-  h5open(output_filename, "w") do file
-    write(file, "cost function", cost_function)
-    write(file, "reference", reference)
-    write(file, "optimization trace", optimization_trace)
-    write(file, "fidelity trace", fidelity_trace)
-  end
+  # output_filename = "data/kitaev_compilation_kappa-0.4_N$(N)_l$(auxiliary_layer).h5"
+  # h5open(output_filename, "w") do file
+  #   write(file, "cost function", cost_function)
+  #   write(file, "reference", reference)
+  #   write(file, "optimization trace", optimization_trace)
+  #   write(file, "fidelity trace", fidelity_trace)
+  # end
 
   return
 end
