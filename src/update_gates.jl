@@ -14,7 +14,7 @@ include("compute_cost_function.jl")
 
 # Define a function to update a single two-qubit gate using Evenbly-Vidal algorithm
 function update_single_gate(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor}, 
-  idx::Int64, idx₁::Int64, idx₂::Int64, input_cutoff::Float64 = 1e-14)
+  idx::Int64, idx₁::Int64, idx₂::Int64, input_cutoff::Float64 = 1e-10)
     
     # Set up the gate set without the target gate
     gates_copy = deepcopy(gates_set)
@@ -80,4 +80,74 @@ function update_single_gate(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITenso
     # Return the updated two-qubit gate, the trace of the product of the target gate and environment tensor
     # and the cost function
     return updated_T, trace, cost
+end
+
+
+
+# Define a function to update one single-qubit gate using Evenbly-Vidal algorithm
+function update_single_qubit_gate(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor}, 
+  idx::Int64, idx₁::Int64, input_cutoff::Float64 = 1e-10)
+    
+	# Set up the gate set without the target gate
+	gates_copy = deepcopy(gates_set)
+	target = gates_copy[idx]
+
+	# idx₁ = indices_pairs[idx][1]
+	# @show idx₁
+
+	# Remove the target gate from the set of gates and check whether it is removed properly
+	deleteat!(gates_copy, idx)
+	if target in gates_copy
+		error("The gate to be optimized is still in the temporary gate set!")
+	end
+
+
+	# Apply the gate set without the target gate to the initial MPS
+	if length(gates_copy) != 0
+		psi_intermediate = apply(gates_copy, psi_ket; cutoff=input_cutoff)
+		normalize!(psi_intermediate)
+	else
+		psi_intermediate = psi_ket
+	end
+
+
+	# Set specific site indices to be primed
+	prime!(psi_bra[idx₁], tags = "Site")
+	i₁ = siteind(psi_intermediate, idx₁)
+	j₁ = siteind(psi_bra, idx₁)
+	@show i₁, j₁
+
+
+	# Compute the environment tensor T for the target single-qubit gate from scratch
+	T = ITensor(1)
+	psi_intermediate_copy = orthogonalize(psi_intermediate, length(psi_intermediate))
+	psi_bra_copy = orthogonalize(psi_bra, length(psi_bra))
+
+	for j in eachindex(psi_intermediate_copy)
+		T *= psi_intermediate_copy[j] 
+		T *= dag(psi_bra_copy[j])
+	end
+	@show inds(T)
+	noprime!(psi_bra)
+
+
+	# Compute the product of the target gate with its environment tensor & compute the cost function before updating the target gate 
+	trace = real((T * target)[1])
+	cost = compute_cost_function(psi_ket, psi_bra, gates_set, input_cutoff)
+	@show trace, cost 
+	println("")
+
+
+	# Perform SVD (USV†) on the environment tensors 
+	U, S, V = svd(T, (i₁))
+
+
+	# Update the target two-qubit gate using the Evenbly-Vidal formula
+	updated_T = dag(V) * delta(inds(S)[1], inds(S)[2]) * dag(U)
+	# @show inds(updated_T)
+
+
+	# Return the updated two-qubit gate, the trace of the product of the target gate and environment tensor
+	# and the cost function
+	return updated_T, trace, cost
 end

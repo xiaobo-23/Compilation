@@ -74,3 +74,55 @@ function random_gates_multi_layers(pairs_array::Vector{Vector{Vector{Int64}}}, i
 
   return output_gates
 end
+
+
+
+# Function to generate a single-layer of mixed single-qubit & two-qubit gates as the initial unitaries
+function single_layer_mixed(input_pairs::Vector{Vector{Int64}}, input_sites)
+	gates = ITensor[]
+	for idx in eachindex(input_pairs)
+		if length(input_pairs[idx]) == 1
+			idx₁ = input_pairs[idx][1]
+			s₁ = input_sites[idx₁]
+
+			# SVD a random tensor to obtain a random unitary by setting all the singular values to 1 
+			G_opt = randomITensor(s₁', s₁)
+			U, S, V = svd(G_opt, (s₁',))
+			# @show inds(U), inds(S), inds(V)
+			G_random = U * delta(inds(S)[1], inds(S)[2]) * dag(V)
+			# @show inds(G_random)
+		elseif length(input_pairs[idx]) == 2
+			idx₁, idx₂ = input_pairs[idx][1], input_pairs[idx][2]
+			s₁ = input_sites[idx₁]
+			s₂ = input_sites[idx₂]
+
+			# SVD a random tensor to obtain a random unitary by setting all the singular values to 1 
+			G_opt = randomITensor(s₁', s₂', s₁, s₂)
+			U, S, V = svd(G_opt, (s₁', s₂'))
+			# @show inds(U), inds(S), inds(V)
+			G_random = U * delta(inds(S)[1], inds(S)[2]) * dag(V)
+			# @show inds(G_random)
+		end
+
+		push!(gates, G_random)
+	end
+
+	return gates
+end 
+
+
+
+
+
+# Function to generate multi layers of mixed single-qubit & two-qubit gates as the initial unitaries
+function multi_layers_mixed(pairs_array::Vector{Vector{Vector{Int64}}}, input_sites)
+	circuit_depth = length(pairs_array)
+	output_gates = []
+
+	for idx in 1 : circuit_depth
+		gates_layer = single_layer_mixed(pairs_array[idx], input_sites)
+		push!(output_gates, gates_layer)
+	end
+
+	return output_gates
+end
