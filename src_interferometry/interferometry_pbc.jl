@@ -362,8 +362,8 @@ let
   
   
   # Set up hyperparameters used in the DMRG simulations, including bond dimensions, cutoff etc.
-  nsweeps = 5
-  maxdim  = [20, 80, 350]
+  nsweeps = 6
+  maxdim  = [20, 80, 300]
   cutoff  = [1E-10]
   eigsolve_krylovdim = 50
   
@@ -501,20 +501,20 @@ let
   #******************************************************************************************************************************************
 
   
-  # @show time_machine
-  # h5open("data/interferometry_pbc_kappa$(κ)_bond300.h5", "cw") do file
-  #   write(file, "psi", ψ)
-  #   write(file, "E0", energy)
-  #   write(file, "Ehist", custom_observer.ehistory)
-  #   write(file, "Sx",  Sx)
-  #   write(file, "Cxx", xxcorr)
-  #   write(file, "Sy", Sy)
-  #   write(file, "Cyy", yycorr)
-  #   write(file, "Sz",  Sz)
-  #   write(file, "Czz", zzcorr)
-  #   write(file, "Plaquette", plaquette_vals)
-  #   write(file, "Bond", linkdims(ψ))
-  # end
+  @show time_machine
+  h5open("data/interferometry_kappa$(κ)_chi$(maximum(maxdim)).h5", "cw") do file
+    write(file, "psi", ψ)
+    write(file, "E0", energy)
+    write(file, "Ehist", custom_observer.ehistory)
+    write(file, "Sx",  Sx)
+    write(file, "Cxx", xxcorr)
+    write(file, "Sy", Sy)
+    write(file, "Cyy", yycorr)
+    write(file, "Sz",  Sz)
+    write(file, "Czz", zzcorr)
+    write(file, "Plaquette", plaquette_vals)
+    write(file, "Bond", linkdims(ψ))
+  end
 
   return
 end

@@ -25,7 +25,7 @@ OMP_NUM_THREADS = 8
 
 
 # Set up the interferometry system with two constrictions
-const Nx_unit = 10
+const Nx_unit = 9
 const Ny_unit = 3
 const Nx = 2 * Nx_unit
 const Ny = Ny_unit + 1
@@ -35,7 +35,7 @@ const N  = Nx * Ny - 6  # Total number of sites after removing sites for interfe
 const Jx::Float64 = 1.0
 const Jy::Float64 = 1.0 
 const Jz::Float64 = 1.0 
-const κ::Float64 = -0.8
+const κ::Float64 = -0.4
 const time_machine = TimerOutput()  # Timing and profiling
 
 
@@ -73,10 +73,10 @@ let
 	# push!(width_profile, 3)
   
   
-  # Example 2: Narrow constrictions on Lx = 10, Ly = 4 lattice
-  constriction₁ = [25, 28]
-  constriction₂ = [47, 50]
-  width_profile = Int[3, 4, 4, 4, 4, 3, 4, 4, 3, 4, 4, 3, 4, 4, 3, 4, 4, 4, 4, 3]
+  # # Example 2: Narrow constrictions on Lx = 10, Ly = 4 lattice
+  # constriction₁ = [25, 28]
+  # constriction₂ = [47, 50]
+  # width_profile = Int[3, 4, 4, 4, 4, 3, 4, 4, 3, 4, 4, 3, 4, 4, 3, 4, 4, 4, 4, 3]
 
   
   # Example 3: Narrow constrictions on Lx = 12, Ly = 4 lattice
@@ -91,6 +91,13 @@ let
   # width_profile = Int[3, 4, 4, 4, 4, 4, 4, 4, 4, 3, 4, 4, 3, 4, 4, 3, 4, 4, 3, 4, 4, 4, 4, 4, 4, 4, 4, 3]
 
 
+  # Example 5: Narrow constrictions on Lx = 9, Ly = 4 lattice
+  constriction₁ = [17, 20]
+  constriction₂ = [47, 50]
+  width_profile = [3, 4, 4, 3, 4, 4, 3, 4, 4, 4, 4, 3, 4, 4, 3, 4, 4, 3]
+
+
+
   lattice = interferometry_lattice_obc(Nx, Ny, N, width_profile)
   number_of_bonds = length(lattice)
   
@@ -98,7 +105,7 @@ let
   # for (idx, bond) in enumerate(lattice)
   #   @show idx, bond.s1, bond.s2
   # end
-  println("")
+  println("\n")
   
   
   """
@@ -144,6 +151,7 @@ let
   zbond::Int = 0
 
 
+
   # Loop through all the bonds in the lattice and set up the two-body interactions 
   os = OpSum()
   for b in lattice
@@ -166,8 +174,7 @@ let
 				break
 			end
 		end
-    # @show b.s1, x
-
+    
 
     # Set up the two-body interaction terms based on the bond type
     if iseven(x)
@@ -186,7 +193,7 @@ let
       end
     end
   end
-  
+
 
   # Check whether the sum of all types of bonds is equal to the total number of bonds
   println("\nChecking the number of bonds in the Hamiltonian:")
@@ -217,7 +224,7 @@ let
       end
       # @show w.s2, x
       
-      
+
       if abs(w.s1 - w.s3) == 1
         if isodd(x)
           os .+= κ, "Sy", w.s1, "Sz", w.s2, "Sx", w.s3
@@ -231,7 +238,7 @@ let
         if isodd(x)
           if abs(w.s3 - w.s2) == Ny
             os .+= κ, "Sz", w.s1, "Sy", w.s2, "Sx", w.s3
-            @info "Added three-spin term" term = ("Sz", w.s1, "Sy", w.s2, "Sx", w.s3, "kappa", κ)    
+            @info "Added three-spin term" term = ("Sz", w.s1, "Sy", w.s2, "Sx", w.s3, "kappa", κ) 
           else
             os .+= κ, "Sz", w.s1, "Sx", w.s2, "Sy", w.s3
             @info "Added three-spin term" term = ("Sz", w.s1, "Sx", w.s2, "Sy", w.s3, "kappa", κ)
@@ -248,7 +255,6 @@ let
           wedge_count += 1
         end
       end
-
       @show wedge_count
     end
     
@@ -281,7 +287,7 @@ let
   
   
   # Set up hyperparameters used in the DMRG simulations, including bond dimensions, cutoff etc.
-  nsweeps = 2
+  nsweeps = 1
   maxdim  = [20, 60, 100, 500, 800, 1000]
   cutoff  = [1E-10]
   eigsolve_krylovdim = 50
@@ -311,56 +317,56 @@ let
 
   # #***************************************************************************************************************
   # #***************************************************************************************************************
-  # """Measure various observables from the ground-state wavefunction"""
+  """Measure various observables from the ground-state wavefunction"""
   
-  # # Measure local observables (one-point functions)
-  # @timeit time_machine "one-point functions" begin
-  #   Sx = expect(ψ, "Sx", sites = 1 : N)
-  #   Sy = -im * expect(ψ, "iSy", sites = 1 : N)
-  #   Sz = expect(ψ, "Sz", sites = 1 : N)
-  # end
+  # Measure local observables (one-point functions)
+  @timeit time_machine "one-point functions" begin
+    Sx = expect(ψ, "Sx", sites = 1 : N)
+    Sy = -im * expect(ψ, "iSy", sites = 1 : N)
+    Sz = expect(ψ, "Sz", sites = 1 : N)
+  end
 
-  # # Measure spin correlation functions (two-point functions)
-  # @timeit time_machine "two-point functions" begin
-  #   xxcorr = correlation_matrix(ψ, "Sx", "Sx", sites = 1 : N)
-  #   zzcorr = correlation_matrix(ψ, "Sz", "Sz", sites = 1 : N)
-  #   yycorr = -1.0 * correlation_matrix(ψ, "iSy", "iSy", sites = 1 : N)
-  # end
+  # Measure spin correlation functions (two-point functions)
+  @timeit time_machine "two-point functions" begin
+    xxcorr = correlation_matrix(ψ, "Sx", "Sx", sites = 1 : N)
+    zzcorr = correlation_matrix(ψ, "Sz", "Sz", sites = 1 : N)
+    yycorr = -1.0 * correlation_matrix(ψ, "iSy", "iSy", sites = 1 : N)
+  end
 
 
-  # """Measure the expectation values of the plaquette operators (six-point correlators) on each hexagon"""
-  # println(repeat("*", 100))
-  # println("Measuring the expectation values of the plaquette operators on each hexagon")
+  """Measure the expectation values of the plaquette operators (six-point correlators) on each hexagon"""
+  println(repeat("*", 100))
+  println("Measuring the expectation values of the plaquette operators on each hexagon")
 
   
-  # # Set up the operators in fixed order for each plaquette
-  # plaquette = Vector{String}(["Z", "iY", "X", "Z", "iY", "X"])
+  # Set up the operators in fixed order for each plaquette
+  plaquette = Vector{String}(["Z", "iY", "X", "Z", "iY", "X"])
 
 
-  # # Set up a list of indices for each plaquette on the interferometry lattice 
-  # plaquette_refs = interferometry_plaquette_reference_obc(N, Nx_unit, width_profile, x_gauge) # Step 1: set up all the reference points
-  # plaquette_indices = interferometry_plaquette_obc(width_profile, x_gauge, plaquette_refs)    # Step 2: set up the indices for each plaquette based on the reference points
+  # Set up a list of indices for each plaquette on the interferometry lattice 
+  plaquette_refs = interferometry_plaquette_reference_obc(N, Nx_unit, width_profile, x_gauge) # Step 1: set up all the reference points
+  plaquette_indices = interferometry_plaquette_obc(width_profile, x_gauge, plaquette_refs)    # Step 2: set up the indices for each plaquette based on the reference points
 
 
-  # # Compute the expectation values of the plaquette operators on each hexagon
-  # nplaquettes = size(plaquette_indices, 1)
-  # plaquette_vals = zeros(Float64, nplaquettes)
-  # for idx in 1:nplaquettes
-  #   indices = plaquette_indices[idx, :]
+  # Compute the expectation values of the plaquette operators on each hexagon
+  nplaquettes = size(plaquette_indices, 1)
+  plaquette_vals = zeros(Float64, nplaquettes)
+  for idx in 1:nplaquettes
+    indices = plaquette_indices[idx, :]
     
-  #   # Construct the MPO for the plaquette operator
-  #   os_w = OpSum()
-  #   os_w .+= plaquette[1], indices[1], 
-  #     plaquette[2], indices[2], 
-  #     plaquette[3], indices[3], 
-  #     plaquette[4], indices[4], 
-  #     plaquette[5], indices[5], 
-  #     plaquette[6], indices[6]
-  #   W = MPO(os_w, sites)
+    # Construct the MPO for the plaquette operator
+    os_w = OpSum()
+    os_w .+= plaquette[1], indices[1], 
+      plaquette[2], indices[2], 
+      plaquette[3], indices[3], 
+      plaquette[4], indices[4], 
+      plaquette[5], indices[5], 
+      plaquette[6], indices[6]
+    W = MPO(os_w, sites)
 
-  #   # Compute the expectation value of the plaquette operator using MPS-MPO contraction
-  #   plaquette_vals[idx] = -1.0 * real(inner(ψ', W, ψ))
-  # end
+    # Compute the expectation value of the plaquette operator using MPS-MPO contraction
+    plaquette_vals[idx] = -1.0 * real(inner(ψ', W, ψ))
+  end
 
   
   
@@ -500,62 +506,54 @@ let
   
 
   
-  # # #***************************************************************************************************************
-  # # #***************************************************************************************************************
-  # println(repeat("*", 100))
-  # println("Summary of results:")
-  # println("")
+  # #***************************************************************************************************************
+  # #***************************************************************************************************************
+  println(repeat("*", 100))
+  println("Summary of results:")
+  println("")
 
    
-  # println("Expectation values of the plaquette oprators on each hexagon are: ")
-  # for idx in 1:nplaquettes
-  #   println("Plaquette $idx : ", plaquette_vals[idx])
-  # end
-  # println("")
+  println("Expectation values of the plaquette oprators on each hexagon are: ")
+  for idx in 1:nplaquettes
+    println("Plaquette $idx : ", plaquette_vals[idx])
+  end
+  println("")
   
   
-  # println("Bond dimensions of the ground-state wavefunction are: ")
-  # @show linkdims(ψ) 
-  # println("")
+  println("Bond dimensions of the ground-state wavefunction are: ")
+  @show linkdims(ψ) 
+  println("")
 
 
-  # # # Check one-point functions
-  # # println("Expectation values of one-point functions <Sx>, <Sy>, and <Sz>:")
-  # # @show Sx
-  # # @show Sy
-  # # @show Sz
+  # # Check one-point functions
+  # println("Expectation values of one-point functions <Sx>, <Sy>, and <Sz>:")
+  # @show Sx
+  # @show Sy
+  # @show Sz
   
 
-  # println(header)
-  # println(header)
-  # println("")
-  # #***************************************************************************************************************
-  # #***************************************************************************************************************
+  println(header)
+  println(header)
+  println("")
+  #***************************************************************************************************************
+  #***************************************************************************************************************
 
  
 
   # """
   #   Save the ground-state wavefunction and various observables to an HDF5 file
   # """
-  # h5open("data/interferometry_N$(Nx_unit)_kappa$(κ).h5", "cw") do file
+  # h5open("data/interferometry_Nx$(Nx_unit)_Ny$(Ny_unit)_kappa$(κ).h5", "cw") do file
   #   write(file, "psi", ψ)
-  #   write(file, "E0", energy)
-  #   write(file, "E0_bond", E_bond)
-  #   write(file, "E0_wedge", E_wedge)
+  #   # write(file, "E0", energy)
+  #   # write(file, "E0_bond", E_bond)
+  #   # write(file, "E0_wedge", E_wedge)
   #   # write(file, "E0variance", variance)
   #   # write(file, "Ehist", custom_observer.ehistory)
   #   # write(file, "Bond", custom_observer.chi)
   #   write(file, "chi", linkdims(ψ))
   #   write(file, "plaquette", plaquette_vals)
   # end
-
-
-  """
-    Save the ground-state wavefunction and various observables to an HDF5 file
-  """
-  h5open("data/interferometry_N$(Nx_unit)_MPO.h5", "cw") do file
-    write(file, "Hamitltonian", H)
-  end
 
   return
 end
