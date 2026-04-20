@@ -31,7 +31,7 @@ const N = 24                            # Total number of qubits
 const J₁ = 1.0
 const τ = 1.0
 const cutoff = 1e-4
-const nsweeps = 100
+const nsweeps = 1
 const default_iters = 25                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
 const stop_criteria = 1e-4               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
 # const time_machine = TimerOutput()     # Timing and profiling
@@ -70,33 +70,33 @@ let
 
 	#*******************************************************************************************************************************
 	#*******************************************************************************************************************************
-	"""Applying projectors ∏ₚ(1 + Wₚ) to the Neel state MPS"""
+	"""Applying projectors ∏ₚ(1 + Wₚ) to the initial MPS and map it to the same topological sector as the target MPS"""
+	println("\n")
+	println("\nApplying projectors to the initial MPS and map it to the same topological sector as the target MPS")
+	
 	indices = [1  2  7  6  11 12; 3  4  9  2  7  8; 5  6  11 4  9  10; 7  8  13 12 17 18; 9  10 15 8  13 14;
-	    11 12 17 10 15 16; 13 14 19 18 23 24; 15 16 21 14 19 20; 17 18 23 16 21 22]
+		11 12 17 10 15 16; 13 14 19 18 23 24; 15 16 21 14 19 20; 17 18 23 16 21 22]
 
 	projection = ITensor[]
-	for idx in 1 : size(indices, 1)
-	  tmp = indices[idx, :]
-	  s₁, s₂, s₃, s₄, s₅, s₆ = sites[tmp[1]], sites[tmp[2]], sites[tmp[3]], sites[tmp[4]], sites[tmp[5]], sites[tmp[6]]
-
-	  hj = 1/sqrt(2) * op("Id", s₁) * op("Id", s₂) * op("Id", s₃) * op("Id", s₄) * op("Id", s₅) * op("Id", s₆) +
-	    1/sqrt(2) * op("Y", s₁) * op("Z", s₂) * op("X", s₃) * op("X", s₄) * op("Z", s₅) * op("Y", s₆)
+	for idx in axes(indices, 1)
+	  s = sites[vec(indices[idx, :])]
+	  
+	  id_tensor = prod(op("Id", tmp_site) for tmp_site in s)
+	  pauli_tensor = op("Y", s[1]) * op("Z", s[2]) * op("X", s[3]) * op("X", s[4]) * op("Z", s[5]) * op("Y", s[6])
+	  
+	  hj = (id_tensor + pauli_tensor) / sqrt(2)
 	  push!(projection, hj)
 	end
 
 	ψ₀ = apply(projection, ψ₀; cutoff=cutoff)
 	fidelity₀ = inner(ψ₀, ψ_T)
 
-
-	println("\nInitial state bond dimensions after applying projectors: $(linkdims(ψ₀))")
-	println("\nThe overlap between the projected initial state and the target state is: $fidelity₀")
 	
-
+	
 	# Compute the expectation value of the plaquette operator defined on each hexagonal plaquette
 	evals₀ = zeros(Float64, size(indices, 1))
 	plaquette_operator = Vector{String}(["iY", "Z", "X", "X", "Z", "iY"])
 
-	
 	for idx in 1 : size(indices, 1)
 	  os_wp = OpSum()
 	  os_wp += plaquette_operator[1], indices[idx, 1], 
@@ -108,18 +108,21 @@ let
 
 	    WP = MPO(os_wp, sites)
 	  evals₀[idx] = -real(inner(ψ₀', WP, ψ₀))
-	end
-
+	end	
 	
-	@show evals₀
+	println("\nThe bond dimensions of the projected MPS: $(linkdims(ψ₀))")
+	println("\nThe overlap between the projected state and the target state is: $fidelity₀")
+	println("\nExpectation value of the plaquette operator defined on each hexagon: $evals₀")
+
 
 	# output_filename = "data/kitaev_compilation_kappa-0.4_N$(N)_projection.h5"
 	# h5open(output_filename, "w") do file
-	#   write(file, "fidelity", inner(ψ₀, ψ_T))
+	#   write(file, "fidelity", fidelity₀)
 	#   write(file, "chi", linkdims(ψ₀))
 	#   write(file, "chi_T", linkdims(ψ_T))
-	#   write(file, "plaquette", plaquette_evals)
+	#   write(file, "plaquette", evals₀)
 	# end
+
 
 	# Measure local observables (one-point functions)
 	# Sx₀, Sy₀, Sz₀ = zeros(Float64, N), zeros(ComplexF64, N), zeros(Float64, N)
@@ -134,10 +137,9 @@ let
 	#*******************************************************************************************************************************
   
   
-  
 	"""
-		Construct the sequence of target gates and randomly intiialized gates to be optimized
-		Define pairs of qubit indices for two-qubit gates 
+		Construct a sequence of randomly initialized gates  of target gates and randomly intiialized gates to be optimized
+		Input: pairs of integers representing the indices of S(4) gates in each layer of the optimization circuit
 	"""
 
 	# Define the pairs of qubit indices for two-qubit gates based on the nearest-neighbor connectivity & bond in the target Hamiltonian
@@ -160,7 +162,7 @@ let
 	
 
 	# Define the pairs of qubit indices for two-qubit gates in a brickwall pattern
-	input_layers=3
+	input_layers=1
 	brickwall = [
 		[[i, i + 1] for i in 1 : 2 : N - 1],
 		[[i, i + 1] for i in 2 : 2 : N - 1],
@@ -348,15 +350,15 @@ let
   
 
 	"""Save the optimization results in an HDF5 file for future analysis and visualization"""
-	output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(input_layers).h5"
+	output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(input_layers)_test.h5"
 	h5open(output_filename, "w") do file
 	  write(file, "cost function", cost_function)
-	#   write(file, "fidelity0", fidelity₀)
-	#   write(file, "Wp_0", evals₀)
+	  write(file, "fidelity0", fidelity₀)
+	  write(file, "Wp_0", evals₀)
 	  write(file, "Wp_1", evals₁)
 	  write(file, "Wp_2", evals₂)
-	  write(file, "optimization trace", optimization_trace)
-	  write(file, "fidelity trace", fidelity_trace)
+	#   write(file, "optimization trace", optimization_trace)
+	#   write(file, "fidelity trace", fidelity_trace)
 	end
 
 
