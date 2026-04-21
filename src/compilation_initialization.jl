@@ -3,6 +3,22 @@
 
 using ITensors
 using ITensorMPS
+using LinearAlgebra
+using Printf
+
+# function ITensors.op(::OpName"RzzCustom", ::SiteType"S=1/2",
+#                      s1::Index, s2::Index; θ::Real)
+#     a = exp(-im * θ / 2)
+#     b = exp( im * θ / 2)
+#     mat = [
+#         a  0  0  0
+#         0  b  0  0
+#         0  0  b  0
+#         0  0  0  a
+#     ]
+#     return itensor(mat, s2', s1', s2, s1)
+# end
+
 
 
 # Function to generate a single-layer of two-qubit gates using the Heisenberg interaction
@@ -43,7 +59,7 @@ end
 
 
 
-# Function to generate a single-layer of random two-qubit gates as the initial unitaries to be optimized
+# Function to generate a single-layer of random SU(4) gates as the initial unitaries
 function random_gates_single_layer(input_pairs::Vector{Vector{Int64}}, input_sites)
   gates = ITensor[]
   for idx in eachindex(input_pairs)
@@ -62,7 +78,7 @@ function random_gates_single_layer(input_pairs::Vector{Vector{Int64}}, input_sit
 end 
 
 
-# Function to generate multi-layers of random two-qubit gates as the initial unitaries to be optimized
+# Function to generate multi-layers of random SU(4) gates as the initial unitaries
 function random_gates_multi_layers(pairs_array::Vector{Vector{Vector{Int64}}}, input_sites)
   circuit_depth = length(pairs_array)
   output_gates = []
@@ -77,7 +93,7 @@ end
 
 
 
-# Function to generate a single-layer of mixed single-qubit & two-qubit gates as the initial unitaries
+# Function to generate a single-layer of mixed single-qubit & SU(4) gates as the initial unitaries
 function single_layer_mixed(input_pairs::Vector{Vector{Int64}}, input_sites)
 	gates = ITensor[]
 	for idx in eachindex(input_pairs)
@@ -112,17 +128,82 @@ end
 
 
 
+# Function to generate a single-layer of mixed single-qubit & Rzz gates as the initial unitaries
+function single_layer_mixed_Rzz(input_pairs::Vector{Vector{Int64}}, input_sites)
+	gates = ITensor[]
+	for pair in input_pairs
+		if length(pair) == 1
+			idx₁ = pair[1]
+			s₁ = input_sites[idx₁]
+
+			# SVD a random tensor to obtain a random unitary by setting the S matrix to be an identity matrix
+			G_opt = randomITensor(s₁', s₁)
+			U, S, V = svd(G_opt, (s₁'))
+			G_random = U * delta(inds(S)[1], inds(S)[2]) * dag(V)
+		elseif length(pair) == 2
+			# idx₁, idx₂ = pair[1], pair[2]
+			angle = 2π * rand()
+			G_random = op(input_sites, "Rzz", pair[1], pair[2]; ϕ=angle)
+			@show G_random
+
+			# tmp_matrix = matrix(combiner(inds(G_random)[1], inds(G_random)[3]) * G_random * combiner(inds(G_random)[2], inds(G_random)[4]))
+			# for i in axes(tmp_matrix, 1)
+			# 	for j in axes(tmp_matrix, 2)
+			# 		@printf("%12.6f + %12.6fi   ", real(tmp_matrix[i,j]), imag(tmp_matrix[i,j]))
+			# 	end
+			# 	println()
+			# end
+
+			# G_random_custom = op("RzzCustom", input_sites, idx₁, idx₂; θ=angle)
+			# @show G_random_custom
+		end
+
+		push!(gates, G_random)
+	end
+
+	return gates
+end 
 
 
-# Function to generate multi layers of mixed single-qubit & two-qubit gates as the initial unitaries
-function multi_layers_mixed(pairs_array::Vector{Vector{Vector{Int64}}}, input_sites)
+
+# Function to generate multi-layers mixed single-qubit & SU(4) gates as the initial unitaries
+# function multi_layers_mixed(pairs_array::Vector{Vector{Vector{Int64}}}, input_sites)
+# 	circuit_depth = length(pairs_array)
+# 	output_gates = []
+
+# 	for idx in 1 : circuit_depth
+# 		gates_layer = single_layer_mixed(pairs_array[idx], input_sites)
+# 		push!(output_gates, gates_layer)
+# 	end
+
+# 	return output_gates
+# end
+
+
+
+# Function to generate multi-layers mixed single-qubit & Rzz gates as the initial unitaries
+function multi_layers_mixed_Rzz(pairs_array::Vector{Vector{Vector{Int64}}}, input_sites)
 	circuit_depth = length(pairs_array)
 	output_gates = []
 
 	for idx in 1 : circuit_depth
-		gates_layer = single_layer_mixed(pairs_array[idx], input_sites)
+		gates_layer = single_layer_mixed_Rzz(pairs_array[idx], input_sites)
 		push!(output_gates, gates_layer)
 	end
-
+ 
 	return output_gates
 end
+
+
+
+# Function to generate multi-layers mixed single-qubit & SU(4) gates as the initial unitaries
+# function multi_layers_mixed(pairs_array::Vector{Vector{Vector{Int64}}}, input_sites)
+# 	return [single_layer_mixed(pairs, input_sites) for pairs in pairs_array]
+# end
+
+
+
+# Function to generate multi-layers mixed single-qubit & Rzz gates as the initial unitaries
+# function multi_layers_mixed_Rzz(pairs_array::Vector{Vector{Vector{Int64}}}, input_sites)
+# 	return [single_layer_mixed_Rzz(pairs, input_sites) for pairs in pairs_array]
+# end
