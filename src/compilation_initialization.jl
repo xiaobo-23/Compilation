@@ -8,8 +8,8 @@ using Printf
 
 # function ITensors.op(::OpName"RzzCustom", ::SiteType"S=1/2",
 #                      s1::Index, s2::Index; θ::Real)
-#     a = exp(-im * θ / 2)
-#     b = exp( im * θ / 2)
+#     a = exp(-im * θ)
+#     b = exp( im * θ)
 #     mat = [
 #         a  0  0  0
 #         0  b  0  0
@@ -142,11 +142,11 @@ function single_layer_mixed_Rzz(input_pairs::Vector{Vector{Int64}}, input_sites)
 			G_random = U * delta(inds(S)[1], inds(S)[2]) * dag(V)
 		elseif length(pair) == 2
 			# idx₁, idx₂ = pair[1], pair[2]
-			angle = 2π * rand()
+			angle = π/2 * rand()
 			G_random = op(input_sites, "Rzz", pair[1], pair[2]; ϕ=angle)
-			@show G_random
+			# @show G_random
 
-			# tmp_matrix = matrix(combiner(inds(G_random)[1], inds(G_random)[3]) * G_random * combiner(inds(G_random)[2], inds(G_random)[4]))
+			# tmp_matrix = matrix(combiner(inds(G_random)[3], inds(G_random)[4]) * G_random * combiner(inds(G_random)[1], inds(G_random)[2]))
 			# for i in axes(tmp_matrix, 1)
 			# 	for j in axes(tmp_matrix, 2)
 			# 		@printf("%12.6f + %12.6fi   ", real(tmp_matrix[i,j]), imag(tmp_matrix[i,j]))

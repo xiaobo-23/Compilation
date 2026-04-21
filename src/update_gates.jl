@@ -12,6 +12,11 @@ using Random
 include("compute_cost_function.jl")
 
 
+PauliZ = [1  0; 0  -1]
+KroneckerZ = kron(PauliZ, PauliZ)
+# display(KroneckerZ)
+
+
 # Define a function to update a single two-qubit gate using Evenbly-Vidal algorithm
 function update_single_gate(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor}, 
   idx::Int64, idx₁::Int64, idx₂::Int64, input_cutoff::Float64 = 1e-10)
@@ -156,14 +161,12 @@ end
 
 # Define a function to update a single two-qubit gate using Evenbly-Vidal algorithm
 function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor}, 
-  idx::Int64, idx₁::Int64, idx₂::Int64, input_cutoff::Float64 = 1e-10)
+  idx::Int64, idx₁::Int64, idx₂::Int64, input_sites, input_cutoff::Float64 = 1e-10)
     
     # Set up the gate set without the target gate
     gates_copy = deepcopy(gates_set)
     target = gates_copy[idx]
 
-    # idx₁, idx₂ = indices_pairs[idx][1], indices_pairs[idx][2]
-    # @show idx₁, idx₂
 
     # Remove the target gate from the set of gates and check whether it is removed properly
     deleteat!(gates_copy, idx)
@@ -186,7 +189,7 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
     prime!(psi_bra[idx₂], tags = "Site")
     i₁, i₂ = siteind(psi_intermediate, idx₁), siteind(psi_intermediate, idx₂)
     j₁, j₂ = siteind(psi_bra, idx₁), siteind(psi_bra, idx₂)
-    @show i₁, i₂, j₁, j₂
+    # @show i₁, i₂, j₁, j₂
     # println("")
 
 
@@ -202,23 +205,49 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
     # @show inds(T)
     noprime!(psi_bra)
    
-    
-    # Compute the product of the target gate with its environment tensor & compute the cost function before updating the target gate 
-    trace = real((T * target)[1])
+
+	trace = real((T * target)[1])
     cost = compute_cost_function(psi_ket, psi_bra, gates_set, input_cutoff)
     @show trace, cost 
-    println("")
-
-    
-    # Perform SVD (USV†) on the environment tensors 
-    U, S, V = svd(T, (i₁, i₂))
+    # println("")
 
 
-    # Update the target two-qubit gate using the Evenbly-Vidal formula
-    updated_T = dag(V) * delta(inds(S)[1], inds(S)[2]) * dag(U)
-    # @show inds(updated_T)
+	# Compute the product of the target gate with its environment tensor & compute the cost function before updating the target gate 
+    matrix_T = matrix(combiner(inds(T)[1], inds(T)[2]) * T * combiner(inds(T)[3], inds(T)[4]))
+	coeff_A = real(sum(matrix_T .* KroneckerZ))
+	coeff_B = real(tr(matrix_T))
+
+	θ₁ = atan(coeff_A, coeff_B)
+	θ₂ = θ₁ + π
+	
+	# a = exp(-im * θ₁)
+	# b = exp( im * θ₁)
+	# mat = [
+	# 	a  0  0  0
+	# 	0  b  0  0
+	# 	0  0  b  0
+	# 	0  0  0  a
+	# ]
+	# updated_T = itensor(mat, j₂, j₁, i₂, i₁)
     
-    
+	
+	updated_T1 = op(input_sites, "Rzz", idx₁, idx₂; ϕ=θ₁)
+	updated_T2 = op(input_sites, "Rzz", idx₁, idx₂; ϕ=θ₂)
+
+	# @show j₁, j₂, i₁, i₂
+	# @show inds(updated_T1)
+	# @show inds(updated_T2)
+	# @show real((T * updated_T1)[1]), real((T * updated_T2)[1])
+	println("")
+
+
+	if real((T * updated_T1)[1]) > real((T * updated_T2)[1])
+		updated_T = updated_T1
+	else
+		updated_T = updated_T2
+	end
+
+	
     # Return the updated two-qubit gate, the trace of the product of the target gate and environment tensor
     # and the cost function
     return updated_T, trace, cost
