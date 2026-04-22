@@ -31,8 +31,8 @@ const N = 24                            # Total number of qubits
 const J₁ = 1.0
 const τ = 1.0
 const cutoff = 1e-4
-const nsweeps = 2
-const default_iters = 5                  # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
+const nsweeps = 1
+const default_iters = 2                  # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
 const stop_criteria = 1e-4               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
 # const time_machine = TimerOutput()     # Timing and profiling
 
@@ -188,131 +188,131 @@ let
 
 
 
-	# """
-	# 	Optimize the parameters of all SU(4) gates in the circuit layer by layer
-	# """
-	# cost_function = zeros(Float64, nsweeps)
-	# reference = zeros(Float64, nsweeps)
-	# optimization_trace = []
-	# fidelity_trace = []
+	"""
+		Optimize the parameters of all SU(4) gates in the circuit layer by layer
+	"""
+	cost_function = zeros(Float64, nsweeps)
+	reference = zeros(Float64, nsweeps)
+	optimization_trace = []
+	fidelity_trace = []
 
 
-	# for iteration in 1 : nsweeps 
-	# 	# Optimize each layer of the two-qubit gate in a forward sweeping order 
-	# 	for layer_idx in 1 : length(circuit_gates)
-	# 		optimization_gates = circuit_gates[layer_idx]
-	# 		idx_pairs = input_pairs[layer_idx]
+	for iteration in 1 : nsweeps 
+		# Optimize each layer of the two-qubit gate in a forward sweeping order 
+		for layer_idx in 1 : length(circuit_gates)
+			optimization_gates = circuit_gates[layer_idx]
+			idx_pairs = input_pairs[layer_idx]
 
 			
-	# 		# Compress the optimization circuit from the initial MPS side
-	# 		ψ_left = deepcopy(ψ₀)
-	# 		if layer_idx > 1
-	# 			for idx in 1 : layer_idx - 1
-	# 				ψ_left = apply(circuit_gates[idx], ψ_left; cutoff=cutoff)
-	# 			end
-	# 			normalize!(ψ_left)
-	# 		end
-	# 		# ψ_left = ψ_ket_collection[layer_idx]
+			# Compress the optimization circuit from the initial MPS side
+			ψ_left = deepcopy(ψ₀)
+			if layer_idx > 1
+				for idx in 1 : layer_idx - 1
+					ψ_left = apply(circuit_gates[idx], ψ_left; cutoff=cutoff)
+				end
+				normalize!(ψ_left)
+			end
+			# ψ_left = ψ_ket_collection[layer_idx]
 			
 			
-	# 		# Compress the optimization circuit from the target MPS side 
-	# 		ψ_right = deepcopy(ψ_T)
-	# 		if layer_idx < length(circuit_gates)
-	# 			for tmp_idx in length(circuit_gates):-1:layer_idx + 1
-	# 				temporary_gates = deepcopy(circuit_gates[tmp_idx])
-	# 				for gate_idx in 1 : length(temporary_gates)
-	# 					temporary_gates[gate_idx] = dag(temporary_gates[gate_idx])
-	# 					swapprime!(temporary_gates[gate_idx], 0 => 1)
-	# 				end
-	# 				ψ_right = apply(temporary_gates, ψ_right; cutoff=cutoff)
-	# 			end
-	# 			normalize!(ψ_right)  
-	# 		end
-	# 		# ψ_right = ψ_bra_collection[layer_idx]
+			# Compress the optimization circuit from the target MPS side 
+			ψ_right = deepcopy(ψ_T)
+			if layer_idx < length(circuit_gates)
+				for tmp_idx in length(circuit_gates):-1:layer_idx + 1
+					temporary_gates = deepcopy(circuit_gates[tmp_idx])
+					for gate_idx in 1 : length(temporary_gates)
+						temporary_gates[gate_idx] = dag(temporary_gates[gate_idx])
+						swapprime!(temporary_gates[gate_idx], 0 => 1)
+					end
+					ψ_right = apply(temporary_gates, ψ_right; cutoff=cutoff)
+				end
+				normalize!(ψ_right)  
+			end
+			# ψ_right = ψ_bra_collection[layer_idx]
 			
 
-	# 		println("\n", repeat("#", 200))
-	# 		fidelity₁ = 0
-	# 		fidelity₂ = 0
+			println("\n", repeat("#", 200))
+			fidelity₁ = 0
+			fidelity₂ = 0
 
-	# 		for iter_idx in 1 : default_iters
-	# 			# Update all two-qubit gates in the forward order
-	# 			println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: top-down sweeping")
-	# 			for idx in 1 : length(idx_pairs)
-	# 				if length(idx_pairs[idx]) == 1
-	# 					idx₁ = idx_pairs[idx][1]
-	# 					@show idx₁
-	# 					updated_gate, tmp_trace, tmp_cost = update_single_qubit_gate(
-	# 						ψ_left, ψ_right, optimization_gates, idx, idx₁, cutoff
-	# 					)
-	# 				elseif length(idx_pairs[idx]) == 2
-	# 					idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
-	# 					# @show idx₁, idx₂
-	# 					# updated_gate, tmp_trace, tmp_cost = update_single_gate(
-	# 					# 	ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, cutoff
-	# 					# )
-	# 					updated_gate, tmp_trace, tmp_cost = update_Rzz(
-	# 						ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, sites, cutoff
-	# 					)
-	# 				end
+			for iter_idx in 1 : default_iters
+				# Update all two-qubit gates in the forward order
+				println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: top-down sweeping")
+				for idx in 1 : length(idx_pairs)
+					if length(idx_pairs[idx]) == 1
+						idx₁ = idx_pairs[idx][1]
+						@show idx₁
+						updated_gate, tmp_trace, tmp_cost = update_single_qubit_gate(
+							ψ_left, ψ_right, optimization_gates, idx, idx₁, cutoff
+						)
+					elseif length(idx_pairs[idx]) == 2
+						idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
+						# @show idx₁, idx₂
+						# updated_gate, tmp_trace, tmp_cost = update_single_gate(
+						# 	ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, cutoff
+						# )
+						updated_gate, tmp_trace, tmp_cost = update_Rzz(
+							ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, sites, cutoff
+						)
+					end
 
-	# 				optimization_gates[idx] = updated_gate
-	# 				append!(optimization_trace, tmp_trace)
-	# 				append!(fidelity_trace, tmp_cost)
-	# 			end
-	# 			println("\n")
+					optimization_gates[idx] = updated_gate
+					append!(optimization_trace, tmp_trace)
+					append!(fidelity_trace, tmp_cost)
+				end
+				println("\n")
 				
 
-	# 			# Update all two-qubit gates in the backward order
-	# 			println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: bottom-up sweeping")
-	# 			for idx in length(idx_pairs):-1:1
-	# 				if length(idx_pairs[idx]) == 1
-	# 					idx₁ = idx_pairs[idx][1]
-	# 					@show idx₁
-	# 					updated_gate, tmp_trace, tmp_cost = update_single_qubit_gate(
-	# 						ψ_left, ψ_right, optimization_gates, idx, idx₁, cutoff
-	# 					)
-	# 				elseif length(idx_pairs[idx]) == 2
-	# 					idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
-	# 					@show idx₁, idx₂
-	# 					# @show idx₁, idx₂
-	# 					# updated_gate, tmp_trace, tmp_cost = update_single_gate(
-	# 					# 	ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, cutoff
-	# 					# )
-	# 					updated_gate, tmp_trace, tmp_cost = update_Rzz(
-	# 						ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, sites, cutoff
-	# 					)
-	# 				end
+				# Update all two-qubit gates in the backward order
+				println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: bottom-up sweeping")
+				for idx in length(idx_pairs):-1:1
+					if length(idx_pairs[idx]) == 1
+						idx₁ = idx_pairs[idx][1]
+						@show idx₁
+						updated_gate, tmp_trace, tmp_cost = update_single_qubit_gate(
+							ψ_left, ψ_right, optimization_gates, idx, idx₁, cutoff
+						)
+					elseif length(idx_pairs[idx]) == 2
+						idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
+						@show idx₁, idx₂
+						# @show idx₁, idx₂
+						# updated_gate, tmp_trace, tmp_cost = update_single_gate(
+						# 	ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, cutoff
+						# )
+						updated_gate, tmp_trace, tmp_cost = update_Rzz(
+							ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, sites, cutoff
+						)
+					end
 
-	# 				optimization_gates[idx] = updated_gate
-	# 				append!(optimization_trace, tmp_trace)
-	# 				append!(fidelity_trace, tmp_cost)
-	# 			end
-	# 			println("\n")
+					optimization_gates[idx] = updated_gate
+					append!(optimization_trace, tmp_trace)
+					append!(fidelity_trace, tmp_cost)
+				end
+				println("\n")
 
 
-	# 			if iter_idx == 1
-	# 				@show typeof(circuit_gates)
-	# 				fidelity₂ = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
-	# 			else
-	# 				fidelity₁ = fidelity₂
-	# 				fidelity₂ = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
+				if iter_idx == 1
+					@show typeof(circuit_gates)
+					fidelity₂ = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
+				else
+					fidelity₁ = fidelity₂
+					fidelity₂ = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
 					
-	# 				if abs(fidelity₂ - fidelity₁) < stop_criteria
-	# 					println("\nThe change of the cost function is smaller than the stopping criteria. Stop the optimization of gates in this layer.")
-	# 					@show [fidelity₁, fidelity₂, abs(fidelity₂ - fidelity₁)]
-	# 					break
-	# 				end
-	# 			end
-	# 		end
-	# 		println(repeat("#", 200), "\n")
-	# 	end
+					if abs(fidelity₂ - fidelity₁) < stop_criteria
+						println("\nThe change of the cost function is smaller than the stopping criteria. Stop the optimization of gates in this layer.")
+						@show [fidelity₁, fidelity₂, abs(fidelity₂ - fidelity₁)]
+						break
+					end
+				end
+			end
+			println(repeat("#", 200), "\n")
+		end
 
 
-	# 	# Compute the cost function after each sweep
-	# 	cost_function[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
-	# 	# reference[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, gates, cutoff)
-	# end
+		# Compute the cost function after each sweep
+		cost_function[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
+		# reference[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, gates, cutoff)
+	end
 
 
 	

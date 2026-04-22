@@ -195,41 +195,35 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
 
 
     # Compute the environment tensor T for the target two-qubit gate from scratch
-    T = ITensor(1)
+    E_T = ITensor(1)
     psi_intermediate_copy = orthogonalize(psi_intermediate, length(psi_intermediate))
     psi_bra_copy = orthogonalize(psi_bra, length(psi_bra))
     
     for j in 1:length(psi_intermediate_copy)
-      T *= psi_intermediate_copy[j] 
-      T *= dag(psi_bra_copy[j])
+      E_T *= psi_intermediate_copy[j] 
+      E_T *= dag(psi_bra_copy[j])
     end
-    # @show inds(T)
+    # @show inds(E_T)
     noprime!(psi_bra)
    
 
-	trace = real((T * target)[1])
+	trace = real((E_T * target)[1])
     cost = compute_cost_function(psi_ket, psi_bra, gates_set, input_cutoff)
     @show trace, cost 
 
 
 	# Compute the product of the target gate with its environment tensor & compute the cost function before updating the target gate 
-    # primed_inds   = filterinds(T; plev=1) 
-	# unprimed_inds = filterinds(T; plev=0)
+    # primed_inds   = filterinds(E_T; plev=1) 
+	# unprimed_inds = filterinds(E_T; plev=0)
 	# C_row = combiner(primed_inds...)
 	# C_col = combiner(unprimed_inds...)
 
-	C_row = combiner(i₁, i₂)
-	C_col = combiner(j₁, j₂)
-	matrix_T = matrix(C_row * T * C_col, combinedind(C_row), combinedind(C_col))
+	C_row = combiner(i₂, i₁)
+	C_col = combiner(j₂, j₁)
+	matrix_T = matrix(C_row * E_T * C_col, combinedind(C_row), combinedind(C_col))
 	
-	
-	for i in 1:4
-		for j in 1:4
-			@printf("%10.4f + %10.4fi   ", real(matrix_T[i,j]), imag(matrix_T[i,j]))
-		end
-		println()
-	end
-	
+	show(IOContext(stdout, :limit=>false), "text/plain", matrix_T)
+	println()
 
 	coeff_A = imag(sum(matrix_T .* KroneckerZ))
 	coeff_B = real(tr(matrix_T))
@@ -279,12 +273,10 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
 	# @show norm(M_it + M_hand)
 
 
-
-
 	Rzz_trace = []
-	for θ in range(-2π, 2π; length = 200)
+	for θ in range(-2π, 2π; length = 1000)
 		updated_T = op(input_sites, "Rzz", idx₁, idx₂; ϕ=θ)
-		push!(Rzz_trace, real((T * updated_T)[1]))
+		push!(Rzz_trace, real((E_T * updated_T)[1]))
 	end
 	@show maximum(Rzz_trace)
 
@@ -293,12 +285,18 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
 	updated_T2 = op(input_sites, "Rzz", idx₁, idx₂; ϕ=θ₂)
 
 
-	if real((T * updated_T1)[1]) > real((T * updated_T2)[1])
+	if real((E_T * updated_T1)[1]) > real((E_T * updated_T2)[1])
 		updated_T = updated_T1
 	else
 		updated_T = updated_T2
 	end
-	@show real((T * updated_T)[1]), real((T * updated_T1)[1]), real((T * updated_T2)[1])
+	@show real((E_T * updated_T)[1]), real((E_T * updated_T1)[1]), real((E_T * updated_T2)[1])
+	F₁ = coeff_B * cos(θ₁) + coeff_A * sin(θ₁)
+	F₂ = coeff_B * cos(θ₂) + coeff_A * sin(θ₂)
+	@show F₁, real((E_T * updated_T1)[1])
+	@show F₂, real((E_T * updated_T2)[1])
+
+
 	# @show inds(updated_T1)
 	# @show inds(updated_T2)
 	# @show j₁, j₂, i₁, i₂
