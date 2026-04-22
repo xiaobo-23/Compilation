@@ -190,8 +190,8 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
     prime!(psi_bra[idx₂], tags = "Site")
     i₁, i₂ = siteind(psi_intermediate, idx₁), siteind(psi_intermediate, idx₂)
     j₁, j₂ = siteind(psi_bra, idx₁), siteind(psi_bra, idx₂)
-    # @show i₁, i₂, j₁, j₂
-    # println("")
+    @show i₁, i₂, j₁, j₂
+    # println()
 
 
     # Compute the environment tensor T for the target two-qubit gate from scratch
@@ -213,72 +213,39 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
 
 
 	# Compute the product of the target gate with its environment tensor & compute the cost function before updating the target gate 
-    # primed_inds   = filterinds(E_T; plev=1) 
-	# unprimed_inds = filterinds(E_T; plev=0)
-	# C_row = combiner(primed_inds...)
-	# C_col = combiner(unprimed_inds...)
-
 	C_row = combiner(i₂, i₁)
 	C_col = combiner(j₂, j₁)
 	matrix_T = matrix(C_row * E_T * C_col, combinedind(C_row), combinedind(C_col))
-	
-	show(IOContext(stdout, :limit=>false), "text/plain", matrix_T)
-	println()
+	# show(IOContext(stdout, :limit=>false), "text/plain", matrix_T)
+	# println()
 
+	
+	# Update the input angle based on the coefficients; one of them should give the maximum value and the other gives the minimum value
 	coeff_A = imag(sum(matrix_T .* KroneckerZ))
 	coeff_B = real(tr(matrix_T))
 	θ₁ = atan(coeff_A, coeff_B)
 	θ₂ = θ₁ + π
-	
-	@show coeff_A, coeff_B, coeff_A/coeff_B, θ₁, θ₂
-	println("")
+	# @show coeff_A, coeff_B, coeff_A/coeff_B, θ₁, θ₂
+	# println()
 
 
-	# Update the target Rzz gate using customized formula for Rzz gates
-	# Rzz_trace = []
-	# for θ in range(θ₁ - π, θ₂ + π; length = 100)
-	# 	a = exp(-im * θ/2)
-	# 	b = exp( im * θ/2)
-	# 	mat = [
-	# 		a  0  0  0
-	# 		0  b  0  0
-	# 		0  0  b  0
-	# 		0  0  0  a
-	# 	]
-	# 	updated_T = itensor(mat, j₁, j₂, i₁, i₂)
-	# 	push!(Rzz_trace, real((T * updated_T)[1]))
-	# end
-	# @show Rzz_trace
-
-
-	# function zz_matrix_from_itensor()
-	# 	ZZi = op("Z", i₁) * op("Z", i₂)
-	# 	Crow = combiner(j₂, j₁)
-	# 	Ccol = combiner(i₂, i₁)
-	# 	M = matrix(Crow * ZZi * Ccol, combinedind(Crow), combinedind(Ccol))
-
-	# 	return M
-	# end
-
-	# function hand_zz()
-	# 	return Diagonal([1.0, -1.0, -1.0, 1.0])
-	# end
-
-
-	# M_it = zz_matrix_from_itensor()
-	# M_hand = hand_zz()
-	# @show M_it
-	# @show M_hand
-	# @show norm(M_it - M_hand)
-	# @show norm(M_it + M_hand)
-
-
-	Rzz_trace = []
+	# For debugging: search for the optimal angle by brute-force way in the range of [-2π, 2π] and check whether the optimal angle obtained from the coefficients is correct
+	Fidelity_values = []
 	for θ in range(-2π, 2π; length = 1000)
 		updated_T = op(input_sites, "Rzz", idx₁, idx₂; ϕ=θ)
-		push!(Rzz_trace, real((E_T * updated_T)[1]))
+		push!(Fidelity_values, real((E_T * updated_T)[1]))
 	end
-	@show maximum(Rzz_trace)
+	@show maximum(Fidelity_values)
+
+	
+	# For Dubugging: search for the optimal angle by computing the cost function in a different way
+	F_values = []
+	for θ in range(-2π, 2π; length = 1000)
+		tmp = coeff_B * cos(θ) + coeff_A * sin(θ)
+		push!(F_values, tmp)
+	end
+	@show maximum(F_values)
+
 
 	# Update the target Rzz gate using native Rzz gate constructor in ITensorMPS.jl
 	updated_T1 = op(input_sites, "Rzz", idx₁, idx₂; ϕ=θ₁)
@@ -291,19 +258,21 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
 		updated_T = updated_T2
 	end
 	@show real((E_T * updated_T)[1]), real((E_T * updated_T1)[1]), real((E_T * updated_T2)[1])
-	F₁ = coeff_B * cos(θ₁) + coeff_A * sin(θ₁)
-	F₂ = coeff_B * cos(θ₂) + coeff_A * sin(θ₂)
-	@show F₁, real((E_T * updated_T1)[1])
-	@show F₂, real((E_T * updated_T2)[1])
+	println()
+	
+	# Double check the optimal angle by computing the cost function after updating the target Rzz gate
+	# F₁ = coeff_B * cos(θ₁) + coeff_A * sin(θ₁)
+	# F₂ = coeff_B * cos(θ₂) + coeff_A * sin(θ₂)
+	# @show F₁, real((E_T * updated_T1)[1])
+	# @show F₂, real((E_T * updated_T2)[1])
 
 
 	# @show inds(updated_T1)
 	# @show inds(updated_T2)
 	# @show j₁, j₂, i₁, i₂
-	println("")
+	# println("")
 
 
-    # Return the updated two-qubit gate, the trace of the product of the target gate and environment tensor
-    # and the cost function
+    # Return the updated Rzz gate, the trace of the product of the target gate and environment tensor and the cost function
     return updated_T, trace, cost
 end

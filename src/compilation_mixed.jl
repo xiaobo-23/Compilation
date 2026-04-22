@@ -31,8 +31,8 @@ const N = 24                            # Total number of qubits
 const J₁ = 1.0
 const τ = 1.0
 const cutoff = 1e-4
-const nsweeps = 1
-const default_iters = 2                  # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
+const nsweeps = 20
+const default_iters = 25                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
 const stop_criteria = 1e-4               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
 # const time_machine = TimerOutput()     # Timing and profiling
 
@@ -164,15 +164,15 @@ let
 	
 
 	# Configure the brickwall gate pattern by defining qubit indices
-	layer_number=1
+	layer_number=8
 	brickwall = [
-		# [[i] for i in 1 : N],
+		[[i] for i in 1 : N],
 		[[i, i + 1] for i in 1 : 2 : N - 1],
-		# [[i] for i in 2 : N - 1],
-		# [[i, i + 1] for i in 2 : 2 : N - 1],
+		[[i] for i in 2 : N - 1],
+		[[i, i + 1] for i in 2 : 2 : N - 1],
 	]
 	input_pairs = repeat(brickwall, layer_number)	
-	# push!(input_pairs, [[i] for i in 1 : N])
+	push!(input_pairs, [[i] for i in 1 : N])
 	# input_pairs = vcat(input_pairs, [[[i] for i in 1 : N]])
 
 
@@ -230,84 +230,52 @@ let
 			end
 			# ψ_right = ψ_bra_collection[layer_idx]
 			
+ 
 
 			println("\n", repeat("#", 200))
 			fidelity₁ = 0
 			fidelity₂ = 0
 
-			for iter_idx in 1 : default_iters
-				# Update all two-qubit gates in the forward order
+			for iter_idx in 1:default_iters
+				# Update all gates from top to bottom
 				println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: top-down sweeping")
-				for idx in 1 : length(idx_pairs)
-					if length(idx_pairs[idx]) == 1
-						idx₁ = idx_pairs[idx][1]
-						@show idx₁
-						updated_gate, tmp_trace, tmp_cost = update_single_qubit_gate(
-							ψ_left, ψ_right, optimization_gates, idx, idx₁, cutoff
-						)
-					elseif length(idx_pairs[idx]) == 2
-						idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
-						# @show idx₁, idx₂
-						# updated_gate, tmp_trace, tmp_cost = update_single_gate(
-						# 	ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, cutoff
-						# )
-						updated_gate, tmp_trace, tmp_cost = update_Rzz(
-							ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, sites, cutoff
-						)
+				for idx in 1:length(idx_pairs)
+					updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
+						update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
+					else
+						update_Rzz(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], idx_pairs[idx][2], sites, cutoff)
 					end
-
 					optimization_gates[idx] = updated_gate
 					append!(optimization_trace, tmp_trace)
 					append!(fidelity_trace, tmp_cost)
 				end
 				println("\n")
-				
 
-				# Update all two-qubit gates in the backward order
+				# Update all gates from bottom to top
 				println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: bottom-up sweeping")
 				for idx in length(idx_pairs):-1:1
-					if length(idx_pairs[idx]) == 1
-						idx₁ = idx_pairs[idx][1]
-						@show idx₁
-						updated_gate, tmp_trace, tmp_cost = update_single_qubit_gate(
-							ψ_left, ψ_right, optimization_gates, idx, idx₁, cutoff
-						)
-					elseif length(idx_pairs[idx]) == 2
+					updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
+						update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
+					else
 						idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
-						@show idx₁, idx₂
-						# @show idx₁, idx₂
-						# updated_gate, tmp_trace, tmp_cost = update_single_gate(
-						# 	ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, cutoff
-						# )
-						updated_gate, tmp_trace, tmp_cost = update_Rzz(
-							ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, sites, cutoff
-						)
+						update_Rzz(ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, sites, cutoff)
 					end
-
 					optimization_gates[idx] = updated_gate
 					append!(optimization_trace, tmp_trace)
 					append!(fidelity_trace, tmp_cost)
 				end
 				println("\n")
 
-
-				if iter_idx == 1
-					@show typeof(circuit_gates)
-					fidelity₂ = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
-				else
-					fidelity₁ = fidelity₂
-					fidelity₂ = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
-					
-					if abs(fidelity₂ - fidelity₁) < stop_criteria
-						println("\nThe change of the cost function is smaller than the stopping criteria. Stop the optimization of gates in this layer.")
-						@show [fidelity₁, fidelity₂, abs(fidelity₂ - fidelity₁)]
-						break
-					end
+				fidelity₂ = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
+				if iter_idx > 1 && abs(fidelity₂ - fidelity₁) < stop_criteria
+					println("\nThe change of the cost function is smaller than the stopping criteria. Stop the optimization of gates in this layer.")
+					println([fidelity₁, fidelity₂, abs(fidelity₂ - fidelity₁)])
+					break
 				end
+				fidelity₁ = fidelity₂
 			end
 			println(repeat("#", 200), "\n")
 		end
-
 
 		# Compute the cost function after each sweep
 		cost_function[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
@@ -372,17 +340,17 @@ let
 
   
 
-	# """Save the optimization results in an HDF5 file for future analysis and visualization"""
-	# output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(layer_number)_test.h5"
-	# h5open(output_filename, "w") do file
-	#   write(file, "cost function", cost_function)
+	"""Save the optimization results in an HDF5 file for future analysis and visualization"""
+	output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(layer_number)_Rzz.h5"
+	h5open(output_filename, "w") do file
+	  write(file, "cost function", cost_function)
 	#   write(file, "fidelity0", fidelity₀)
 	#   write(file, "Wp_0", evals₀)
 	#   write(file, "Wp_1", evals₁)
 	#   write(file, "Wp_2", evals₂)
-	#   write(file, "optimization trace", optimization_trace)
-	#   write(file, "fidelity trace", fidelity_trace)
-	# end
+	  write(file, "optimization trace", optimization_trace)
+	  write(file, "fidelity trace", fidelity_trace)
+	end
 
 
   return
