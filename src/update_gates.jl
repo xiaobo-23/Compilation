@@ -2,12 +2,12 @@
 # Functions used to update a target two-qubit gate within a set of two-qubit gates
 # Use Evenbly-Vidal algorithms to compute the environment tensor and update the target gate
 
-
 using ITensors
 using ITensorMPS
 using MKL
 using LinearAlgebra
 using Random
+using Printf
 
 include("compute_cost_function.jl")
 
@@ -221,9 +221,8 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
 	C_row = combiner(i₁, i₂)
 	C_col = combiner(j₁, j₂)
 	matrix_T = matrix(C_row * T * C_col, combinedind(C_row), combinedind(C_col))
-	# @show size(matrix_T)
-	# @show inds(matrix_T)
-
+	
+	
 	for i in 1:4
 		for j in 1:4
 			@printf("%10.4f + %10.4fi   ", real(matrix_T[i,j]), imag(matrix_T[i,j]))
@@ -232,7 +231,7 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
 	end
 	
 
-	coeff_A = real(sum(matrix_T .* KroneckerZ))
+	coeff_A = imag(sum(matrix_T .* KroneckerZ))
 	coeff_B = real(tr(matrix_T))
 	θ₁ = atan(coeff_A, coeff_B)
 	θ₂ = θ₁ + π
@@ -258,26 +257,26 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
 	# @show Rzz_trace
 
 
-	function zz_matrix_from_itensor()
-		ZZi = op("Z", i₁) * op("Z", i₂)
-		Crow = combiner(j₂, j₁)
-		Ccol = combiner(i₂, i₁)
-		M = matrix(Crow * ZZi * Ccol, combinedind(Crow), combinedind(Ccol))
+	# function zz_matrix_from_itensor()
+	# 	ZZi = op("Z", i₁) * op("Z", i₂)
+	# 	Crow = combiner(j₂, j₁)
+	# 	Ccol = combiner(i₂, i₁)
+	# 	M = matrix(Crow * ZZi * Ccol, combinedind(Crow), combinedind(Ccol))
 
-		return M
-	end
+	# 	return M
+	# end
 
-	function hand_zz()
-		return Diagonal([1.0, -1.0, -1.0, 1.0])
-	end
+	# function hand_zz()
+	# 	return Diagonal([1.0, -1.0, -1.0, 1.0])
+	# end
 
 
-	M_it = zz_matrix_from_itensor()
-	M_hand = hand_zz()
-	@show M_it
-	@show M_hand
-	@show norm(M_it - M_hand)
-	@show norm(M_it + M_hand)
+	# M_it = zz_matrix_from_itensor()
+	# M_hand = hand_zz()
+	# @show M_it
+	# @show M_hand
+	# @show norm(M_it - M_hand)
+	# @show norm(M_it + M_hand)
 
 
 

@@ -6,10 +6,10 @@ using ITensorMPS
 using LinearAlgebra
 using Printf
 
-# function ITensors.op(::OpName"RzzCustom", ::SiteType"S=1/2",
+# function ITensors.op(::OpName"Rzz", ::SiteType"S=1/2",
 #                      s1::Index, s2::Index; θ::Real)
-#     a = exp(-im * θ)
-#     b = exp( im * θ)
+#     a = exp(-im * θ/2)
+#     b = exp( im * θ/2)
 #     mat = [
 #         a  0  0  0
 #         0  b  0  0
@@ -141,20 +141,45 @@ function single_layer_mixed_Rzz(input_pairs::Vector{Vector{Int64}}, input_sites)
 			U, S, V = svd(G_opt, (s₁'))
 			G_random = U * delta(inds(S)[1], inds(S)[2]) * dag(V)
 		elseif length(pair) == 2
-			# idx₁, idx₂ = pair[1], pair[2]
-			angle = π/2 * rand()
-			G_random = op(input_sites, "Rzz", pair[1], pair[2]; ϕ=angle)
+			ϕ = π/2 * rand()
+			G_random = op(input_sites, "Rzz", pair[1], pair[2]; ϕ=ϕ)
 			# @show G_random
 
-			# tmp_matrix = matrix(combiner(inds(G_random)[3], inds(G_random)[4]) * G_random * combiner(inds(G_random)[1], inds(G_random)[2]))
-			# for i in axes(tmp_matrix, 1)
-			# 	for j in axes(tmp_matrix, 2)
-			# 		@printf("%12.6f + %12.6fi   ", real(tmp_matrix[i,j]), imag(tmp_matrix[i,j]))
-			# 	end
-			# 	println()
-			# end
 
-			# G_random_custom = op("RzzCustom", input_sites, idx₁, idx₂; θ=angle)
+
+			# """Check the exponent convention of the Rzz gate in ITensorMPS.jl"""
+			# i₁, i₂ = input_sites[pair[1]], input_sites[pair[2]]
+			# ϕ_test = 0.3
+			# G_random = op(input_sites, "Rzz", pair[1], pair[2]; ϕ=ϕ_test)
+			# @show inds(G_random)
+			# @show i₁, i₂
+
+			# rows, cols = combiner(i₁, i₂), combiner(i₁', i₂')
+			# G_random_matrix = matrix(rows * G_random * cols, combinedind(rows), combinedind(cols))
+			# show(IOContext(stdout, :limit=>false), "text/plain", G_random_matrix)
+			# println()
+
+			# expected_factor1 = Diagonal([exp(-im*ϕ_test*z) for z in [1, -1, -1, 1]])
+			# expected_factor2 = Diagonal([exp(-im*ϕ_test*z/2) for z in [1, -1, -1, 1]])
+
+			# show(IOContext(stdout, :limit=>false), "text/plain", expected_factor1)
+			# println()
+
+			# @show isapprox(G_random_matrix, expected_factor1; atol=1e-10)  
+			# @show isapprox(G_random_matrix, expected_factor2; atol=1e-10)
+
+
+			# """Check the ordering of basis states"""
+			# ZI = op("Z", i₁) * op("I", i₂)
+			# rows = combiner(i₂, i₁)
+			# cols = combiner(i₂', i₁')
+			# ZI_matrix = matrix(rows * ZI * cols, combinedind(rows), combinedind(cols))
+			# show(IOContext(stdout, :limit=>false), "text/plain", ZI_matrix)
+			# println()
+
+
+			# """Set up the Rzz gate using custom constructor"""
+			# G_random_custom = op("RzzCustom", input_sites, idx₁, idx₂; θ=ϕ)
 			# @show G_random_custom
 		end
 
