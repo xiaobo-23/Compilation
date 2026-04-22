@@ -1,6 +1,6 @@
-## 11/1/2025
-## Functions used to update a target two-qubit gate within a set of two-qubit gates
-## Use Evenbly-Vidal algorithms to compute the environment tensor and update the target gate
+# 11/1/2025
+# Functions used to update a target two-qubit gate within a set of two-qubit gates
+# Use Evenbly-Vidal algorithms to compute the environment tensor and update the target gate
 
 
 using ITensors
@@ -159,6 +159,7 @@ end
 
 
 
+
 # Define a function to update a single two-qubit gate using Evenbly-Vidal algorithm
 function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor}, 
   idx::Int64, idx₁::Int64, idx₂::Int64, input_sites, input_cutoff::Float64 = 1e-10)
@@ -180,7 +181,7 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
       psi_intermediate = apply(gates_copy, psi_ket; cutoff=input_cutoff)
       normalize!(psi_intermediate)
     else
-      psi_intermediate = psi_ket
+      psi_intermediate = deepcopy(psi_ket)
     end
 
   
@@ -209,36 +210,88 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
 	trace = real((T * target)[1])
     cost = compute_cost_function(psi_ket, psi_bra, gates_set, input_cutoff)
     @show trace, cost 
-    # println("")
 
 
 	# Compute the product of the target gate with its environment tensor & compute the cost function before updating the target gate 
-    matrix_T = matrix(combiner(inds(T)[1], inds(T)[2]) * T * combiner(inds(T)[3], inds(T)[4]))
+    # primed_inds   = filterinds(T; plev=1) 
+	# unprimed_inds = filterinds(T; plev=0)
+	# C_row = combiner(primed_inds...)
+	# C_col = combiner(unprimed_inds...)
+
+	C_row = combiner(i₁, i₂)
+	C_col = combiner(j₁, j₂)
+	matrix_T = matrix(C_row * T * C_col, combinedind(C_row), combinedind(C_col))
+	# @show size(matrix_T)
+	# @show inds(matrix_T)
+
+	for i in 1:4
+		for j in 1:4
+			@printf("%10.4f + %10.4fi   ", real(matrix_T[i,j]), imag(matrix_T[i,j]))
+		end
+		println()
+	end
+	
+
 	coeff_A = real(sum(matrix_T .* KroneckerZ))
 	coeff_B = real(tr(matrix_T))
-
 	θ₁ = atan(coeff_A, coeff_B)
 	θ₂ = θ₁ + π
 	
-	# a = exp(-im * θ₁)
-	# b = exp( im * θ₁)
-	# mat = [
-	# 	a  0  0  0
-	# 	0  b  0  0
-	# 	0  0  b  0
-	# 	0  0  0  a
-	# ]
-	# updated_T = itensor(mat, j₂, j₁, i₂, i₁)
-    
-	
+	@show coeff_A, coeff_B, coeff_A/coeff_B, θ₁, θ₂
+	println("")
+
+
+	# Update the target Rzz gate using customized formula for Rzz gates
+	# Rzz_trace = []
+	# for θ in range(θ₁ - π, θ₂ + π; length = 100)
+	# 	a = exp(-im * θ/2)
+	# 	b = exp( im * θ/2)
+	# 	mat = [
+	# 		a  0  0  0
+	# 		0  b  0  0
+	# 		0  0  b  0
+	# 		0  0  0  a
+	# 	]
+	# 	updated_T = itensor(mat, j₁, j₂, i₁, i₂)
+	# 	push!(Rzz_trace, real((T * updated_T)[1]))
+	# end
+	# @show Rzz_trace
+
+
+	function zz_matrix_from_itensor()
+		ZZi = op("Z", i₁) * op("Z", i₂)
+		Crow = combiner(j₂, j₁)
+		Ccol = combiner(i₂, i₁)
+		M = matrix(Crow * ZZi * Ccol, combinedind(Crow), combinedind(Ccol))
+
+		return M
+	end
+
+	function hand_zz()
+		return Diagonal([1.0, -1.0, -1.0, 1.0])
+	end
+
+
+	M_it = zz_matrix_from_itensor()
+	M_hand = hand_zz()
+	@show M_it
+	@show M_hand
+	@show norm(M_it - M_hand)
+	@show norm(M_it + M_hand)
+
+
+
+
+	Rzz_trace = []
+	for θ in range(-2π, 2π; length = 200)
+		updated_T = op(input_sites, "Rzz", idx₁, idx₂; ϕ=θ)
+		push!(Rzz_trace, real((T * updated_T)[1]))
+	end
+	@show maximum(Rzz_trace)
+
+	# Update the target Rzz gate using native Rzz gate constructor in ITensorMPS.jl
 	updated_T1 = op(input_sites, "Rzz", idx₁, idx₂; ϕ=θ₁)
 	updated_T2 = op(input_sites, "Rzz", idx₁, idx₂; ϕ=θ₂)
-
-	# @show j₁, j₂, i₁, i₂
-	# @show inds(updated_T1)
-	# @show inds(updated_T2)
-	# @show real((T * updated_T1)[1]), real((T * updated_T2)[1])
-	println("")
 
 
 	if real((T * updated_T1)[1]) > real((T * updated_T2)[1])
@@ -246,8 +299,13 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
 	else
 		updated_T = updated_T2
 	end
+	@show real((T * updated_T)[1]), real((T * updated_T1)[1]), real((T * updated_T2)[1])
+	# @show inds(updated_T1)
+	# @show inds(updated_T2)
+	# @show j₁, j₂, i₁, i₂
+	println("")
 
-	
+
     # Return the updated two-qubit gate, the trace of the product of the target gate and environment tensor
     # and the cost function
     return updated_T, trace, cost

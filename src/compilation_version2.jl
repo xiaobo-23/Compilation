@@ -32,7 +32,7 @@ const J₁ = 1.0
 const τ = 1.0
 const cutoff = 1e-4
 const nsweeps = 2
-const default_iters = 25                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
+const default_iters = 5                  # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
 const stop_criteria = 1e-4               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
 # const time_machine = TimerOutput()     # Timing and profiling
 
@@ -243,7 +243,7 @@ let
 						idx₁ = idx_pairs[idx][1]
 						@show idx₁
 						updated_gate, tmp_trace, tmp_cost = update_single_qubit_gate(
-							ψ_left, ψ_right, optimization_gates, idx, idx₁, sites, cutoff
+							ψ_left, ψ_right, optimization_gates, idx, idx₁, cutoff
 						)
 					elseif length(idx_pairs[idx]) == 2
 						idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
