@@ -140,11 +140,12 @@ function single_layer_mixed_Rzz(input_pairs::Vector{Vector{Int64}}, input_sites)
 			G_opt = randomITensor(s₁', s₁)
 			U, S, V = svd(G_opt, (s₁'))
 			G_random = U * delta(inds(S)[1], inds(S)[2]) * dag(V)
+
+			# G_random = op("Id", s₁)
 		elseif length(pair) == 2
 			ϕ = π/2 * rand()
 			G_random = op(input_sites, "Rzz", pair[1], pair[2]; ϕ=ϕ)
 			# @show G_random
-
 
 
 			# """Check the exponent convention of the Rzz gate in ITensorMPS.jl"""

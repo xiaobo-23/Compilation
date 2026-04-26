@@ -28,11 +28,11 @@ OMP_NUM_THREADS = 8
 
 
 # Define parameters for the compilation 
-const N = 12  # Total number of qubits
+const N = 24  # Total number of qubits
 const J₁ = 1.0
 const τ = 0.5
 const cutoff = 1e-12
-const nsweeps = 100
+const nsweeps = 20
 const time_machine = TimerOutput()  # Timing and profiling
 
 
@@ -56,8 +56,8 @@ let
   # Initialize the origiinal random MPS
   # sites = siteinds("S=1/2", N; conserve_qns=false)
   state = [isodd(n) ? "Up" : "Dn" for n in 1:N]
-  # ψ₀ = random_mps(sites, state; linkdims=16)  # Initialize the original random MPS
   ψ₀ = MPS(sites, state)                        # Initialize the MPS in a Neel state
+  # ψ₀ = random_mps(sites, state; linkdims=16)  # Initialize the original random MPS
   # @show ψ₀
 
   
@@ -127,9 +127,9 @@ let
                     [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24]],
                     [[2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13], [14, 15], [16, 17], [18, 19], [20, 21], [22, 23]],
                     [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24]],
-                    [[2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13], [14, 15], [16, 17], [18, 19], [20, 21], [22, 23]],
+                    [[2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13], [14, 15], [16, 17], [18, 19], [20, 21], [22, 23]], 
                     [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24]],
-                    [[2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13], [14, 15], [16, 17], [18, 19], [20, 21], [22, 23]],
+                    [[2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13], [14, 15], [16, 17], [18, 19], [20, 21], [22, 23]]
                     # [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16],
                     # [17, 18], [19, 20], [21, 22]],
                     # [[2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13], [14, 15], [16, 17],
@@ -156,10 +156,10 @@ let
       s₁ = sites[idx₁]
       s₂ = sites[idx₂]
       G_opt = randomITensor(s₁', s₂', s₁, s₂)
-      Gj_opt = exp(1.0im * G_opt)
+      # Gj_opt = exp(1.0im * G_opt)
 
-      # push!(optimization_gates, G_opt)
-      push!(optimization_gates, Gj_opt)
+      push!(optimization_gates, G_opt)
+      # push!(optimization_gates, Gj_opt)
     end
     # @show optimization_gates
     push!(gates_set, optimization_gates)
@@ -225,7 +225,7 @@ let
       println(repeat("#", 200))
       println("")
       println("Optimization iteration $iteration")
-      println("Optimizing layered two-qubit gate in layer $layer_idx")
+      println("Optimization in forward time direction @ layer $layer_idx")
       println("")
       println(repeat("#", 200))
 
@@ -311,8 +311,7 @@ let
         append!(trace_history, tmp_trace)
         append!(optimization_history, tmp_cost)
       end
-      println("")
-      
+      # println("")
       
       
       # Update gates in the backward direction
@@ -338,7 +337,7 @@ let
         append!(trace_history, tmp_trace)
         append!(optimization_history, tmp_cost)
       end
-      println("")
+      # println("")
 
 
       # for idx in 1:length(pairs)
@@ -399,7 +398,7 @@ let
         println(repeat("#", 200))
         println("")
         println("Optimization iteration $iteration")
-        println("Optimizing layered two-qubit gate in layer $layer_idx")
+        println("Optimization in backward direction @ layer $layer_idx")
         println("")
         println(repeat("#", 200))
 
@@ -409,7 +408,6 @@ let
         
 
         # Update each two-qubit gate in forward direction 
-        # println(repeat("#", 200))
         println("")
         println("FORWARD SWEEP")
         println("")
@@ -436,7 +434,7 @@ let
             for gate_idx in 1 : length(intermediate_gates)
               intermediate_gates[gate_idx] = dag(intermediate_gates[gate_idx])
               swapprime!(intermediate_gates[gate_idx], 0 => 1)
-              println("")
+              # println("")
             end
 
             # for gate_idx in 1 : length(intermediate_gates)
@@ -470,9 +468,8 @@ let
           append!(trace_history, tmp_trace)
           append!(optimization_history, tmp_cost)
         end
-        println("")
+        # println("")
         
-    
 
         # Update gates in the backward direction
         println("")
@@ -496,7 +493,7 @@ let
           append!(trace_history, tmp_trace)
           append!(optimization_history, tmp_cost)
         end
-        println("")
+        # println("")
 
 
         # println(repeat("#", 200))
@@ -565,13 +562,13 @@ let
   println(repeat("#", 200))
 
 
-  # # Store the optimization data into an HDF5 file
-  # output_filename = "../data/compilation_heisenberg_N$(N)_v4.h5"
-  # h5open(output_filename, "w") do file
-  #   write(file, "cost function", cost_function)
-  #   write(file, "optimization", optimization_history)
-  #   write(file, "trace", trace_history)
-  # end
+  # Store the optimization data into an HDF5 file
+  output_filename = "../data/compilation_kitaev_N$(N)_v2.h5"
+  h5open(output_filename, "w") do file
+    write(file, "cost function", cost_function)
+    write(file, "optimization", optimization_history)
+    write(file, "trace", trace_history)
+  end
   
   return 
 end

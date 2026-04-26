@@ -225,7 +225,7 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
 	coeff_B = real(tr(matrix_T))
 	θ₁ = atan(coeff_A, coeff_B)
 	θ₂ = θ₁ + π
-	# @show coeff_A, coeff_B, coeff_A/coeff_B, θ₁, θ₂
+	@show coeff_A, coeff_B, coeff_A/coeff_B, θ₁, θ₂
 	# println()
 
 
@@ -235,8 +235,8 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
 		updated_T = op(input_sites, "Rzz", idx₁, idx₂; ϕ=θ)
 		push!(Fidelity_values, real((E_T * updated_T)[1]))
 	end
+	# @show Fidelity_values	
 	@show maximum(Fidelity_values)
-
 	
 	# For Dubugging: search for the optimal angle by computing the cost function in a different way
 	F_values = []
@@ -244,6 +244,7 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
 		tmp = coeff_B * cos(θ) + coeff_A * sin(θ)
 		push!(F_values, tmp)
 	end
+	# @show F_values
 	@show maximum(F_values)
 
 
