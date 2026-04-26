@@ -133,54 +133,40 @@ let
   
   
   
-	# """
-	# 	Construct a sequence of single-qubit gates and two-qubit gates to variationally compile 
-	# 	the wave function of the target Hamiltonian represented as an MPS
-	# 	Input: pairs of integers representing the qubit indices in each layer of the optimization circuit
-	# """
+	"""
+		# ---------------------------------------------------------------------------
+		# Build the variational brickwall ansatz used to compile the target MPS.
+		#
+		# Each repeating block has four sublayers:
+		#   1. single-qubit gates on all sites
+		#   2. two-qubit gates on odd bonds  (i, i+1), i = 1, 3, 5, …
+		#   3. single-qubit gates on interior sites 2:N-1
+		#   4. two-qubit gates on even bonds (i, i+1), i = 2, 4, 6, …
+		# The block is repeated `n_layers` times and capped with a final
+		# single-qubit layer on every site.
+		# ---------------------------------------------------------------------------
+	"""
 
-	# # Define the pairs of qubit indices for two-qubit gates based on the nearest-neighbor bond determined by the target Hamiltonian
-	# # input_pairs = [
-	# # 				[[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24]],
-	# # 				[[2, 3], [4, 5], [8, 9], [10, 11], [14, 15], [16, 17], [20, 21], [22, 23]], 
-	# # 				[[1, 6], [7, 12], [13, 18], [19, 24]], 
-	# # 				[[2, 7], [8, 13], [14, 19]], 
-	# # 				[[4, 9], [10, 15], [16, 21]], 
-	# # 				[[6, 11], [12, 17], [18, 23]],
-	# # 			]
-	# # Define the additional pairs of qubit indices to cover nearest-neighbor sites in the MPS representation
-	# # auxiliary_layers=0
-	# # brickwall = [
-	# # 	[[i, i + 1] for i in 1 : 2 : N - 1],
-	# # 	[[i, i + 1] for i in 2 : 2 : N - 1],
-	# # ]
-	# # input_pairs = vcat(input_pairs, repeat(brickwall, auxiliary_layers))
+	# Configure the brickwall gate pattern by defining qubit indices
+	n_layers = 6
+	brickwall_block = [
+		[[i] for i in 1 : N],
+		[[i, i + 1] for i in 1 : 2 : N - 1],
+		[[i] for i in 2 : N - 1],
+		[[i, i + 1] for i in 2 : 2 : N - 1],
+	]
+	input_pairs = repeat(brickwall_block, n_layers)	
+	push!(input_pairs, [[i] for i in 1 : N])
 
 	
-
-	# # Configure the brickwall gate pattern by defining qubit indices
-	# layer_number=6
-	# brickwall = [
-	# 	[[i] for i in 1 : N],
-	# 	[[i, i + 1] for i in 1 : 2 : N - 1],
-	# 	[[i] for i in 2 : N - 1],
-	# 	[[i, i + 1] for i in 2 : 2 : N - 1],
-	# ]
-	# input_pairs = repeat(brickwall, layer_number)	
-	# push!(input_pairs, [[i] for i in 1 : N])
-	# # input_pairs = vcat(input_pairs, [[[i] for i in 1 : N]])
-
-
-	# # Initialize the mixed of single-qubit & two-qubnit gates randomly in each layer 
-	# circuit_gates = multi_layers_mixed_Rzz(input_pairs, sites)
-	# # @show circuit_gates
-
-
-	# # Check the consistency between the number of layers of gates and the number of layers of input pairs
-	# if length(circuit_gates) != length(input_pairs)
-	# 	error("The number of layers of gates does not match the number of layers of input pairs.")
-	# end
-
+	# Randomly initialize the mixed single- and two-qubit gates in each layer.
+	circuit_gates = multi_layers_mixed_Rzz(input_pairs, sites)
+	
+	# Check the consistency between the number of layers of gates and the number of layers of input pairs
+	@assert length(circuit_gates) == length(input_pairs) """
+		Layer-count mismatch: got $(length(circuit_gates)) layers of gates for $(length(input_pairs)) layer specs. 
+	""" 
+	
 
 
 	# """
@@ -338,7 +324,7 @@ let
   
 
 	# """Save the optimization results in an HDF5 file for future analysis and visualization"""
-	# output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(layer_number)_Rzz.h5"
+	# output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(n_layers)_Rzz.h5"
 	# h5open(output_filename, "w") do file
 	#   write(file, "cost function", cost_function)
 	#   write(file, "fidelity0", fidelity₀)
