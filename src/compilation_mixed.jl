@@ -2,13 +2,12 @@
 # Compiling the Kitaev model on the interferometer geometry
 # Optimize parameters of single-qubit gates and two-qubit Rzz gates
 
+
 using ITensors, ITensorMPS
 using HDF5, MAT
 using Random
 using TimerOutputs
 using LinearAlgebra, MKL
-BLAS.set_num_threads(8)
-@info "BLAS configuration" vendor=BLAS.vendor() config=BLAS.get_config() threads=BLAS.get_num_threads()
 
 
 
@@ -19,7 +18,13 @@ include("plaquette.jl")
 include("validation.jl")
 
 
+
+
 # Set up parameters for multithreading and parallelization
+BLAS.set_num_threads(8)
+@info "BLAS configuration" vendor=BLAS.vendor() config=BLAS.get_config() threads=BLAS.get_num_threads()
+println()
+
 # MKL_NUM_THREADS = 8
 # OPENBLAS_NUM_THREADS = 8
 # OMP_NUM_THREADS = 8
@@ -40,14 +45,14 @@ let
 	# Set up and optimize single-qubit & two-qubit gates to variationally
 	# compile the wave function of the Kitaev model on a cylinder.
 	#  ---------------------------------------------------------------------------
-
-	println("─"^60)
+	println("─"^70)
 	println("Variational circuit compilation: ground state preparation for the interferometer based on the Kitaev honeycomb model")
-	println("─"^60, "\n")
+	println("─"^70, "\n")
 
+	
 	# Load the target ground-state MPS (e.g. Kitaev honeycomb, κ = 0.4, 6×4).
-	target_mps_path = joinpath(@__DIR__, "..", "data",
-							"kitaev_honeycomb_kappa-0.4_Lx6_Ly4.h5")
+	target_mps_path = joinpath(@__DIR__, "..", "data", 
+		"kitaev_honeycomb_kappa-0.4_Lx6_Ly4.h5")
 
 	ψ_T, sites = h5open(target_mps_path, "r") do file
 		ψ = read(file, "psi", MPS)
@@ -67,75 +72,54 @@ let
 	ψ₀    = MPS(sites, state)
 	
 	# Alternative initializations — uncomment as needed:
-	#   state = [isodd(n) ? "Up" : "Dn" for n in 1:N]   # Néel product state
-	#   ψ₀    = random_mps(sites, state; linkdims = 8)  # bond-dimension-8 random MPS
+	# state = [isodd(n) ? "Up" : "Dn" for n in 1:N]   # Néel product state
+	# ψ₀	= random_mps(sites, state; linkdims = 8)  # bond-dimension-8 random MPS
 
 	
-	#*******************************************************************************************************************************
-	#*******************************************************************************************************************************
-	# """Applying projectors ∏ₚ(1 + Wₚ) to the initial MPS and map it to the same topological sector as the target MPS"""
-	# println("\n")
-	# println("\nApplying projectors to the initial MPS and map it to the same topological sector as the target MPS")
 	
-	# indices = [1  2  7  6  11 12; 3  4  9  2  7  8; 5  6  11 4  9  10; 7  8  13 12 17 18; 9  10 15 8  13 14;
-	# 	11 12 17 10 15 16; 13 14 19 18 23 24; 15 16 21 14 19 20; 17 18 23 16 21 22]
-
-	# projection = ITensor[]
-	# for idx in axes(indices, 1)
-	#   s = sites[vec(indices[idx, :])]
-	  
-	#   id_tensor = prod(op("Id", tmp_site) for tmp_site in s)
-	#   pauli_tensor = op("Y", s[1]) * op("Z", s[2]) * op("X", s[3]) * op("X", s[4]) * op("Z", s[5]) * op("Y", s[6])
-	  
-	#   hj = (id_tensor + pauli_tensor) / sqrt(2)
-	#   push!(projection, hj)
-	# end
-
-	# ψ₀ = apply(projection, ψ₀; cutoff=cutoff)
-	# fidelity₀ = inner(ψ_T, ψ₀)
-
-
-	# """Rotate the projected MPS by a global phase to maximize the real part of the overlap with the target MPS"""
-	# ϕ_phase = angle(fidelity₀)
-	# ψ₀[1] = ψ₀[1] * exp(-im * ϕ_phase)
-	# fidelity₀_rotated = inner(ψ_T, ψ₀)	
-	# @show ϕ_phase fidelity₀, fidelity₀_rotated
-
-
-	# # Compute the expectation value of the plaquette operator defined on each hexagonal plaquette
-	# evals₀ = zeros(Float64, size(indices, 1))
-	# plaquette_operator = Vector{String}(["iY", "Z", "X", "X", "Z", "iY"])
-
-	# for idx in 1 : size(indices, 1)
-	#   os_wp = OpSum()
-	#   os_wp += plaquette_operator[1], indices[idx, 1], 
-	#     plaquette_operator[2], indices[idx, 2], 
-	#     plaquette_operator[3], indices[idx, 3], 
-	#     plaquette_operator[4], indices[idx, 4], 
-	#     plaquette_operator[5], indices[idx, 5], 
-	#     plaquette_operator[6], indices[idx, 6]
-
-	#     WP = MPO(os_wp, sites)
-	#   evals₀[idx] = -real(inner(ψ₀', WP, ψ₀))
-	# end	
 	
-	# println("\nThe bond dimensions of the projected MPS: $(linkdims(ψ₀))")
-	# println("\nThe overlap between the projected state and the target state is: $fidelity₀")
-	# println("\nExpectation value of the plaquette operator defined on each hexagon: $evals₀")
+	# ---------------------------------------------------------------------------
+	# Project the initial MPS into the same topological sector as the target MPS
+	# by applying ∏ₚ (1 + Wₚ)/√2, then align the global phase.
+	#---------------------------------------------------------------------------
+	println("─"^70)
+	println("Flux-sector projection of the initial MPS")
+	println("─"^70)
+	
+	
+	# Build one (1 + Wp)/√2 tensor per plaquette.
+	indices = hexagonal_plaquettes(N, 4)
+	projection = ITensor[]
+	for p_sites in indices
+		s = sites[p_sites]
+		
+		id_tensor = prod(op("Id", tmp_site) for tmp_site in s)
+		pauli_tensor = op("Y", s[1]) * op("Z", s[2]) * op("X", s[3]) * op("X", s[4]) * op("Z", s[5]) * op("Y", s[6])
+
+		hj = (id_tensor + pauli_tensor) / sqrt(2)
+		push!(projection, hj)
+	end
+
+	
+	# Apply the projector and align the global phase to maximize Re⟨ψ_T | ψ₀⟩.
+	ψ₀ = apply(projection, ψ₀; cutoff=cutoff)
+	fidelity₀ = inner(ψ_T, ψ₀)
+	ϕ_phase = angle(fidelity₀)
+	ψ₀[1] = ψ₀[1] * exp(-im * ϕ_phase)
+	fidelity₀_rotated = inner(ψ_T, ψ₀)	
+	
+
+	# Diagnostics: bond dimensions, overlaps, and per-plaquette ⟨Wp⟩.
+	result_proj = measure_plaquettes(ψ₀, sites; width = 4)
+	evals₀      = result_proj.wp
+	@printf "  bond dimensions     : %s\n" linkdims(ψ₀)
+	@printf "  ⟨ψ_T | ψ₀⟩          : %+.6f %+.6fi\n" real(fidelity₀)   imag(fidelity₀)
+	@printf "  ⟨ψ_T | ψ₀⟩ rotated  : %+.6f %+.6fi\n" real(fidelity₀_rotated) imag(fidelity₀_rotated)
+	println("⟨Wp⟩ on each hexagon:           ", evals₀)
 
 
-	# output_filename = "data/kitaev_compilation_kappa-0.4_N$(N)_projection.h5"
-	# h5open(output_filename, "w") do file
-	#   write(file, "fidelity", fidelity₀)
-	#   write(file, "chi", linkdims(ψ₀))
-	#   write(file, "chi_T", linkdims(ψ_T))
-	#   write(file, "plaquette", evals₀)
-	# end
-	#*******************************************************************************************************************************
-	#*******************************************************************************************************************************
-  
-  
-  
+
+	
 	# ---------------------------------------------------------------------------
 	# Build the variational brickwall ansatz used to compile the target MPS.
 	#
@@ -286,6 +270,8 @@ let
 
 
 	
+	
+	
 	# ---------------------------------------------------------------------------
 	# Validate the optimized circuit by measuring the hexagonal plaquette
 	# operators on both the compiled MPS and the target MPS, and report the
@@ -293,12 +279,12 @@ let
 	# ---------------------------------------------------------------------------
 	result  = validate_plaquettes(circuit_gates, sites, state, ψ_T; width = 4)
 	
-	println("\n⟨Wp⟩ per plaquette")
-	println("─"^300)
+	println("\n", "─"^70)
+	println("⟨Wp⟩ per plaquette")
+	println("─"^70)
 	@printf "  %-12s %s\n" "optimized" join((@sprintf("%+.8f", x) for x in result.wp_opt), "  ")
 	@printf "  %-12s %s\n" "target"    join((@sprintf("%+.8f", x) for x in result.wp_target), "  ")
 	# @printf "  %-12s max |⟨Wp⟩ - 1| = %.2e\n" "deviation" maximum(abs, result.wp_opt .- 1)
-	println("─"^300, "\n")
   
 
 	# Save the expectation values of the plaquette operators in an HDF5 file

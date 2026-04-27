@@ -57,3 +57,23 @@ function validate_plaquettes(circuit_gates, sites, state, ψ_T;
 
     return (; ψ_opt, wp_opt, wp_target, plaquettes)
 end
+
+
+
+"""
+    measure_plaquettes(ψ::MPS, sites; width = 4) -> NamedTuple
+ 
+    Measure the Kitaev plaquette expectation values ⟨Wp⟩ on a pre-existing MPS
+    `ψ` for a width-`width` honeycomb cylinder.
+    
+    Use this when `ψ` has already been prepared (e.g. by flux-sector projection
+    of the initial product state) and you only need to measure, not compile.
+    
+    Returns `(; wp, plaquettes)`.
+"""
+
+function measure_plaquettes(ψ::MPS, sites; width::Integer = 4)
+    plaquettes = hexagonal_plaquettes(length(sites), width)
+    wp = [-real(inner(ψ', plaquette_mpo(p, sites), ψ)) for p in plaquettes]
+    return (; wp, plaquettes)
+end
