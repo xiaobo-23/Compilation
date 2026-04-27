@@ -2,14 +2,14 @@
 # Compiling the Kitaev model on the interferometer geometry
 # Optimize parameters of single-qubit gates and two-qubit Rzz gates
 
-using ITensors
-using ITensorMPS
-using HDF5
-using MKL
-using LinearAlgebra
-using TimerOutputs
-using MAT
+using ITensors, ITensorMPS
+using HDF5, MAT
 using Random
+using TimerOutputs
+using LinearAlgebra, MKL
+BLAS.set_num_threads(8)
+@info "BLAS configuration" vendor=BLAS.vendor() config=BLAS.get_config() threads=BLAS.get_num_threads()
+
 
 
 include("compute_cost_function.jl")
@@ -20,30 +20,26 @@ include("validation.jl")
 
 
 # Set up parameters for multithreading and parallelization
-MKL_NUM_THREADS = 8
-OPENBLAS_NUM_THREADS = 8
-OMP_NUM_THREADS = 8
-
-# Monitor the number of threads used by BLAS and LAPACK
-@info "BLAS configuration" BLAS.get_config(), BLAS.get_num_threads()
+# MKL_NUM_THREADS = 8
+# OPENBLAS_NUM_THREADS = 8
+# OMP_NUM_THREADS = 8
 
 
-# Set up the parameters used in the optimization procedure for variationally compiling the wave function of many-body Hamiltonian
-const N = 48                            # Total number of qubits
+# ─── Compilation parameters ──────────────────────────────────────────────
+const N = 48                             # Total number of qubits
 const J₁ = 1.0
 const τ = 1.0
 const cutoff = 1e-4
 const nsweeps = 1
 const default_iters = 25                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
 const stop_criteria = 1e-4               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
-# const time_machine = TimerOutput()     # Timing and profiling
 
 
 let
-	# ===========================================================================
+	# ---------------------------------------------------------------------------
 	# Set up and optimize single-qubit & two-qubit gates to variationally
 	# compile the wave function of the Kitaev model on a cylinder.
-	# ===========================================================================
+	#  ---------------------------------------------------------------------------
 
 	println("─"^60)
 	println("Variational circuit compilation: ground state preparation for the interferometer based on the Kitaev honeycomb model")
@@ -60,7 +56,7 @@ let
 	@info "Loaded target MPS" path=target_mps_path N=length(sites) maxlinkdim=maxlinkdim(ψ_T)
 
 
-	# ─── Initialize the trial MPS as a product state. ─────────────────────────
+	# ── Initialize the trial MPS as a product state. ─────────────────────────
 	# A random MPS is also supported (see below) but the all-Up product state is
 	# the cleanest reference for a Kitaev variational compilation: it has zero
 	# entanglement, so any entanglement in ψ_opt comes from the optimized circuit.
@@ -305,7 +301,7 @@ let
 	println("─"^300, "\n")
   
 
-	# # Save the expectation values of the plaquette operators in an HDF5 file
+	# Save the expectation values of the plaquette operators in an HDF5 file
 	# h5open(output_filename, "r+") do file
 	# 	write(file, "Wp_opt", result.wp_opt)
 	# 	write(file, "Wp_target", result.wp_target)
