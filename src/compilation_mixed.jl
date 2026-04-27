@@ -40,34 +40,39 @@ const stop_criteria = 1e-4               # Stopping criteria for the optimizatio
 
 
 let
-	"""
-		Compile the wave function of many-body Hamiltonian by optimizing parameters of single-qubit and two-qubit Rzz gates 
-		to approximate the target MPS
-	"""
-	
-	println(repeat("#", 200))
-	println(repeat("#", 200))
-	println("\nSET UP AND OPTIMIZE SINGLE-QUBIT & TWO-QUBIT GATES TO VARIATIONALLY COMPILE THE WAVE FUNCTION OF THE KITAEV MODEL")
-  
-	
-	"""Read in the ground-state wave function of the target Hamiltonian represented as an MPS"""
-	# e.g. the Kitaev model on a cylinderical geometry; 
-	file = h5open("../data/kitaev_honeycomb_kappa-0.4_Lx6_Ly4.h5", "r")
-	ψ_T = read(file, "psi", MPS)
-	# @show typeof(ψ_T)
-	sites = siteinds(ψ_T)
-	close(file)
+	# ===========================================================================
+	# Set up and optimize single-qubit & two-qubit gates to variationally
+	# compile the wave function of the Kitaev model on a cylinder.
+	# ===========================================================================
 
-	
-	"""Initialize the original MPS as a product state or a random MPS"""
-	Random.seed!(100)
-	# sites = siteinds("S=1/2", N; conserve_qns=false)
-	# state = [isodd(n) ? "Up" : "Dn" for n in 1:N]
-	state = ["Up" for n in 1:N]
-	ψ₀ = MPS(sites, state)                          # Initialize the originial MPS as a product state
-	# ψ₀ = random_mps(sites, state; linkdims=8)     # Initialize the original random MPS
-	# @show linkdims(ψ₀)
+	println("─"^60)
+	println("Variational circuit compilation: ground state preparation for the interferometer based on the Kitaev honeycomb model")
+	println("─"^60, "\n")
 
+	# Load the target ground-state MPS (e.g. Kitaev honeycomb, κ = 0.4, 6×4).
+	target_mps_path = joinpath(@__DIR__, "..", "data",
+							"kitaev_honeycomb_kappa-0.4_Lx6_Ly4.h5")
+
+	ψ_T, sites = h5open(target_mps_path, "r") do file
+		ψ = read(file, "psi", MPS)
+		return ψ, siteinds(ψ)
+	end
+	@info "Loaded target MPS" path=target_mps_path N=length(sites) maxlinkdim=maxlinkdim(ψ_T)
+
+
+	# ─── Initialize the trial MPS as a product state. ─────────────────────────
+	# A random MPS is also supported (see below) but the all-Up product state is
+	# the cleanest reference for a Kitaev variational compilation: it has zero
+	# entanglement, so any entanglement in ψ_opt comes from the optimized circuit.
+	random_seed = 100
+	Random.seed!(random_seed)
+	state = fill("Up", N)
+	# state = ["Up" for n in 1:N]
+	ψ₀    = MPS(sites, state)
+	
+	# Alternative initializations — uncomment as needed:
+	#   state = [isodd(n) ? "Up" : "Dn" for n in 1:N]   # Néel product state
+	#   ψ₀    = random_mps(sites, state; linkdims = 8)  # bond-dimension-8 random MPS
 
 	
 	#*******************************************************************************************************************************
@@ -135,19 +140,17 @@ let
   
   
   
-	"""
-		# ---------------------------------------------------------------------------
-		# Build the variational brickwall ansatz used to compile the target MPS.
-		#
-		# Each repeating block has four sublayers:
-		#   1. single-qubit gates on all sites
-		#   2. two-qubit gates on odd bonds  (i, i+1), i = 1, 3, 5, …
-		#   3. single-qubit gates on interior sites 2:N-1
-		#   4. two-qubit gates on even bonds (i, i+1), i = 2, 4, 6, …
-		# The block is repeated `n_layers` times and capped with a final
-		# single-qubit layer on every site.
-		# ---------------------------------------------------------------------------
-	"""
+	# ---------------------------------------------------------------------------
+	# Build the variational brickwall ansatz used to compile the target MPS.
+	#
+	# Each repeating block has four sublayers:
+	#   1. single-qubit gates on all sites
+	#   2. two-qubit gates on odd bonds  (i, i+1), i = 1, 3, 5, …
+	#   3. single-qubit gates on interior sites 2:N-1
+	#   4. two-qubit gates on even bonds (i, i+1), i = 2, 4, 6, …
+	# The block is repeated `n_layers` times and capped with a final
+	# single-qubit layer on every site.
+	# ---------------------------------------------------------------------------
 
 	# Configure the brickwall gate pattern by defining qubit indices
 	n_layers = 6
@@ -287,13 +290,11 @@ let
 
 
 	
-	"""
-		# ---------------------------------------------------------------------------
-		# Validate the optimized circuit by measuring the hexagonal plaquette
-		# operators on both the compiled MPS and the target MPS, and report the
-		# optimization history.
-		# ---------------------------------------------------------------------------
-	"""
+	# ---------------------------------------------------------------------------
+	# Validate the optimized circuit by measuring the hexagonal plaquette
+	# operators on both the compiled MPS and the target MPS, and report the
+	# optimization history.
+	# ---------------------------------------------------------------------------
 	result  = validate_plaquettes(circuit_gates, sites, state, ψ_T; width = 4)
 	
 	println("\n⟨Wp⟩ per plaquette")
