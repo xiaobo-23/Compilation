@@ -15,6 +15,7 @@ using Random
 include("compute_cost_function.jl")
 include("update_gates.jl")
 include("compilation_initialization.jl")
+include("plaquette.jl")
 
 
 # Set up parameters for multithreading and parallelization
@@ -27,7 +28,7 @@ OMP_NUM_THREADS = 8
 
 
 # Set up the parameters used in the optimization procedure for variationally compiling the wave function of many-body Hamiltonian
-const N = 24                            # Total number of qubits
+const N = 48                            # Total number of qubits
 const J₁ = 1.0
 const τ = 1.0
 const cutoff = 1e-4
@@ -50,7 +51,7 @@ let
 	
 	"""Read in the ground-state wave function of the target Hamiltonian represented as an MPS"""
 	# e.g. the Kitaev model on a cylinderical geometry; 
-	file = h5open("../data/kitaev_honeycomb_kappa-0.4_Lx4_Ly3.h5", "r")
+	file = h5open("../data/kitaev_honeycomb_kappa-0.4_Lx6_Ly4.h5", "r")
 	ψ_T = read(file, "psi", MPS)
 	# @show typeof(ψ_T)
 	sites = siteinds(ψ_T)
@@ -70,55 +71,55 @@ let
 	
 	#*******************************************************************************************************************************
 	#*******************************************************************************************************************************
-	"""Applying projectors ∏ₚ(1 + Wₚ) to the initial MPS and map it to the same topological sector as the target MPS"""
-	println("\n")
-	println("\nApplying projectors to the initial MPS and map it to the same topological sector as the target MPS")
+	# """Applying projectors ∏ₚ(1 + Wₚ) to the initial MPS and map it to the same topological sector as the target MPS"""
+	# println("\n")
+	# println("\nApplying projectors to the initial MPS and map it to the same topological sector as the target MPS")
 	
-	indices = [1  2  7  6  11 12; 3  4  9  2  7  8; 5  6  11 4  9  10; 7  8  13 12 17 18; 9  10 15 8  13 14;
-		11 12 17 10 15 16; 13 14 19 18 23 24; 15 16 21 14 19 20; 17 18 23 16 21 22]
+	# indices = [1  2  7  6  11 12; 3  4  9  2  7  8; 5  6  11 4  9  10; 7  8  13 12 17 18; 9  10 15 8  13 14;
+	# 	11 12 17 10 15 16; 13 14 19 18 23 24; 15 16 21 14 19 20; 17 18 23 16 21 22]
 
-	projection = ITensor[]
-	for idx in axes(indices, 1)
-	  s = sites[vec(indices[idx, :])]
+	# projection = ITensor[]
+	# for idx in axes(indices, 1)
+	#   s = sites[vec(indices[idx, :])]
 	  
-	  id_tensor = prod(op("Id", tmp_site) for tmp_site in s)
-	  pauli_tensor = op("Y", s[1]) * op("Z", s[2]) * op("X", s[3]) * op("X", s[4]) * op("Z", s[5]) * op("Y", s[6])
+	#   id_tensor = prod(op("Id", tmp_site) for tmp_site in s)
+	#   pauli_tensor = op("Y", s[1]) * op("Z", s[2]) * op("X", s[3]) * op("X", s[4]) * op("Z", s[5]) * op("Y", s[6])
 	  
-	  hj = (id_tensor + pauli_tensor) / sqrt(2)
-	  push!(projection, hj)
-	end
+	#   hj = (id_tensor + pauli_tensor) / sqrt(2)
+	#   push!(projection, hj)
+	# end
 
-	ψ₀ = apply(projection, ψ₀; cutoff=cutoff)
-	fidelity₀ = inner(ψ_T, ψ₀)
-
-
-	"""Rotate the projected MPS by a global phase to maximize the real part of the overlap with the target MPS"""
-	ϕ_phase = angle(fidelity₀)
-	ψ₀[1] = ψ₀[1] * exp(-im * ϕ_phase)
-	fidelity₀_rotated = inner(ψ_T, ψ₀)	
-	@show ϕ_phase fidelity₀, fidelity₀_rotated
+	# ψ₀ = apply(projection, ψ₀; cutoff=cutoff)
+	# fidelity₀ = inner(ψ_T, ψ₀)
 
 
-	# Compute the expectation value of the plaquette operator defined on each hexagonal plaquette
-	evals₀ = zeros(Float64, size(indices, 1))
-	plaquette_operator = Vector{String}(["iY", "Z", "X", "X", "Z", "iY"])
+	# """Rotate the projected MPS by a global phase to maximize the real part of the overlap with the target MPS"""
+	# ϕ_phase = angle(fidelity₀)
+	# ψ₀[1] = ψ₀[1] * exp(-im * ϕ_phase)
+	# fidelity₀_rotated = inner(ψ_T, ψ₀)	
+	# @show ϕ_phase fidelity₀, fidelity₀_rotated
 
-	for idx in 1 : size(indices, 1)
-	  os_wp = OpSum()
-	  os_wp += plaquette_operator[1], indices[idx, 1], 
-	    plaquette_operator[2], indices[idx, 2], 
-	    plaquette_operator[3], indices[idx, 3], 
-	    plaquette_operator[4], indices[idx, 4], 
-	    plaquette_operator[5], indices[idx, 5], 
-	    plaquette_operator[6], indices[idx, 6]
 
-	    WP = MPO(os_wp, sites)
-	  evals₀[idx] = -real(inner(ψ₀', WP, ψ₀))
-	end	
+	# # Compute the expectation value of the plaquette operator defined on each hexagonal plaquette
+	# evals₀ = zeros(Float64, size(indices, 1))
+	# plaquette_operator = Vector{String}(["iY", "Z", "X", "X", "Z", "iY"])
+
+	# for idx in 1 : size(indices, 1)
+	#   os_wp = OpSum()
+	#   os_wp += plaquette_operator[1], indices[idx, 1], 
+	#     plaquette_operator[2], indices[idx, 2], 
+	#     plaquette_operator[3], indices[idx, 3], 
+	#     plaquette_operator[4], indices[idx, 4], 
+	#     plaquette_operator[5], indices[idx, 5], 
+	#     plaquette_operator[6], indices[idx, 6]
+
+	#     WP = MPO(os_wp, sites)
+	#   evals₀[idx] = -real(inner(ψ₀', WP, ψ₀))
+	# end	
 	
-	println("\nThe bond dimensions of the projected MPS: $(linkdims(ψ₀))")
-	println("\nThe overlap between the projected state and the target state is: $fidelity₀")
-	println("\nExpectation value of the plaquette operator defined on each hexagon: $evals₀")
+	# println("\nThe bond dimensions of the projected MPS: $(linkdims(ψ₀))")
+	# println("\nThe overlap between the projected state and the target state is: $fidelity₀")
+	# println("\nExpectation value of the plaquette operator defined on each hexagon: $evals₀")
 
 
 	# output_filename = "data/kitaev_compilation_kappa-0.4_N$(N)_projection.h5"
@@ -174,8 +175,8 @@ let
 	# """
 	# cost_function = zeros(Float64, nsweeps)
 	# reference = zeros(Float64, nsweeps)
-	# optimization_trace = []
-	# fidelity_trace = []
+	# optimization_trace = Float64[]
+	# fidelity_trace = Float64[]
 
 
 	# for iteration in 1 : nsweeps 
@@ -263,78 +264,94 @@ let
 	# 	# reference[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, gates, cutoff)
 	# end
 
+	
+	"""Print the history of the cost function and the difference between the optimization trace and the fidelity trace in the terminal"""
+	println("\nThe history of the cost function during the optimization: ")
+	@show cost_function
+	println("\nComputing the fidelity using two different approaches & the difference should fluctuate around zero with machine precision: ")
+	@show (optimization_trace - fidelity_trace)[1 : 20]
 
 	
-	# """
-	# 	Validate the expectation values of the plaquette operators defined on each hexagonal plaquette using the optimized MPS
-	# """
-	# psi_test = MPS(sites, state)
-	# for idx in 1 : length(circuit_gates)
-	# 	psi_test = apply(circuit_gates[idx], psi_test; cutoff=cutoff)	
-	# end
-	# normalize!(psi_test)
-	
-	
-	# # Compute the expectation value of the plaquette operator defined on each hexagonal plaquette
-	# plaquette_operator = Vector{String}(["iY", "Z", "X", "X", "Z", "iY"])
-	# indices = [1  2  7  6  11 12; 3  4  9  2  7  8; 5  6  11 4  9  10; 7  8  13 12 17 18; 9  10 15 8  13 14;
-	#     11 12 17 10 15 16; 13 14 19 18 23 24; 15 16 21 14 19 20; 17 18 23 16 21 22]
-	# evals₁ = zeros(Float64, axes(indices, 1))
-	# evals₂ = similar(evals₁)
-
-	
-	# for (idx, tmp) in enumerate(eachrow(indices))
-	# 	os_wp = OpSum()
-	# 	os_wp += plaquette_operator[1], tmp[1], 
-	# 		plaquette_operator[2], tmp[2], 
-	# 		plaquette_operator[3], tmp[3], 
-	# 		plaquette_operator[4], tmp[4], 
-	# 		plaquette_operator[5], tmp[5], 
-	# 		plaquette_operator[6], tmp[6]
-	# 	WP = MPO(os_wp, sites)
+	"""Save the optimization results in an HDF5 file for future analysis and visualization"""
+	output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(n_layers)_Rzz.h5"
+	h5open(output_filename, "w") do file
+		write(file, "cost function", cost_function)
+		write(file, "fidelity0", fidelity₀)
+		write(file, "Wp_0", evals₀)
+		write(file, "Wp_1", evals₁)
+		write(file, "Wp_2", evals₂)
+		write(file, "optimization trace", optimization_trace)
+		write(file, "fidelity trace", fidelity_trace)
+	end
 
 
-	# 	# Validate the expectation values of the plaquette operators using the optimized MPS
-	# 	z₁ = inner(psi_test', WP, psi_test)
-	# 	abs(imag(z₁)) < 1e-8 || @warn "Non-negligible imaginary part: $z₁"
+	
+	"""
+		# ---------------------------------------------------------------------------
+		# Validate the optimized circuit by measuring the hexagonal plaquette
+		# operators on both the compiled MPS and the target MPS, and report the
+		# optimization history.
+		# ---------------------------------------------------------------------------
+	"""
+	psi_test = MPS(sites, state)
+	for gate_layer in circuit_gates
+		psi_test = apply(gate_layer, psi_test; cutoff=cutoff)	
+	end
+	normalize!(psi_test)
+	
+	
+	# Plaquette-operator definition.  Each row of `plaquette_sites` lists the six
+	# sites of a hexagonal plaquette in the order they receive the operators in
+	# `plaquette_ops`, so that Wp = (iY)_{r1} ⊗ Z_{r2} ⊗ X_{r3} ⊗ X_{r4} ⊗ Z_{r5} ⊗ (iY)_{r6}.
+	plaquette_operator = Vector{String}(["iY", "Z", "X", "X", "Z", "iY"])
+	indices = hexagonal_plaquettes(N, 4)   # Generate the indices for each hexagonal plaquette on the width-four cylinder geometry
+	@show indices
+
+
+	# Compute the expectation value of the plaquette operator defined on each hexagonal plaquette 
+	# using both the optimized MPS and the target MPS, and compare the results.
+	evals₁ = zeros(Float64, axes(indices, 1))
+	evals₂ = similar(evals₁)
+
+	for (idx, tmp) in enumerate(indices)
+		@show idx, tmp
+		os_wp = OpSum()
+		os_wp += plaquette_operator[1], tmp[1], 
+			plaquette_operator[2], tmp[2], 
+			plaquette_operator[3], tmp[3], 
+			plaquette_operator[4], tmp[4], 
+			plaquette_operator[5], tmp[5], 
+			plaquette_operator[6], tmp[6]
+		WP = MPO(os_wp, sites)
+
+
+		# Validate the expectation values of the plaquette operators using the optimized MPS
+		z₁ = inner(psi_test', WP, psi_test)
+		abs(imag(z₁)) < 1e-8 || @warn "Non-negligible imaginary part: $z₁"
 		
 		
-	# 	# Validate the expectation values of the plaquette operators using the target MPS
-	# 	z₂ = inner(ψ_T', WP, ψ_T)
-	# 	abs(imag(z₂)) < 1e-8 || @warn "Non-negligible imaginary part: $z₂"
-
-	# 	evals₁[idx] = -real(z₁)
-	# 	evals₂[idx] = -real(z₂)
-	# end
-	# println("\nExpectation values of the plaquette operators defined on each hexagonal plaquette using the optimized MPS: ")
-	# @show evals₁
-	# println("\nExpectation values of the plaquette operators defined on each hexagonal plaquette using the target MPS: ")
-	# @show evals₂
-
-
-
-	# """Print the history of the cost function and the difference between the optimization trace and the fidelity trace in the terminal"""
-	# println("\nThe history of the cost function during the optimization: ")
-	# @show cost_function
-	# println("\nComputing the fidelity using two different approaches & the difference should fluctuate around zero with machine precision: ")
-	# @show (optimization_trace - fidelity_trace)[1 : 20]
+		# Validate the expectation values of the plaquette operators using the target MPS
+		z₂ = inner(ψ_T', WP, ψ_T)
+		abs(imag(z₂)) < 1e-8 || @warn "Non-negligible imaginary part: $z₂"
+ 
+		evals₁[idx] = -real(z₁)
+		evals₂[idx] = -real(z₂)
+	end
+	println("\nExpectation values of the plaquette operators defined on each hexagonal plaquette using the optimized MPS: ")
+	@show evals₁
+	println("\nExpectation values of the plaquette operators defined on each hexagonal plaquette using the target MPS: ")
+	@show evals₂
 
 	println(repeat("#", 200))
 	println(repeat("#", 200))
   
 
-	# """Save the optimization results in an HDF5 file for future analysis and visualization"""
-	# output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(n_layers)_Rzz.h5"
-	# h5open(output_filename, "w") do file
-	#   write(file, "cost function", cost_function)
-	#   write(file, "fidelity0", fidelity₀)
-	#   write(file, "Wp_0", evals₀)
-	#   write(file, "Wp_1", evals₁)
-	#   write(file, "Wp_2", evals₂)
-	#   write(file, "optimization trace", optimization_trace)
-	#   write(file, "fidelity trace", fidelity_trace)
+	# # Save the expectation values of the plaquette operators in an HDF5 file
+	# h5open(output_filename, "r+") do file
+	# 	write(file, "Wp_1", evals₁)
+	# 	write(file, "Wp_2", evals₂)
 	# end
-
+	
 
   return
 end
