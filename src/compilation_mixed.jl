@@ -16,6 +16,7 @@ include("compute_cost_function.jl")
 include("update_gates.jl")
 include("compilation_initialization.jl")
 include("plaquette.jl")
+include("validation.jl")
 
 
 # Set up parameters for multithreading and parallelization
@@ -265,24 +266,24 @@ let
 	# end
 
 	
-	"""Print the history of the cost function and the difference between the optimization trace and the fidelity trace in the terminal"""
-	println("\nThe history of the cost function during the optimization: ")
-	@show cost_function
-	println("\nComputing the fidelity using two different approaches & the difference should fluctuate around zero with machine precision: ")
-	@show (optimization_trace - fidelity_trace)[1 : 20]
+	# """Print the history of the cost function and the difference between the optimization trace and the fidelity trace in the terminal"""
+	# println("\nThe history of the cost function during the optimization: ")
+	# @show cost_function
+	# println("\nComputing the fidelity using two different approaches & the difference should fluctuate around zero with machine precision: ")
+	# @show (optimization_trace - fidelity_trace)[1 : 20]
 
 	
-	"""Save the optimization results in an HDF5 file for future analysis and visualization"""
-	output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(n_layers)_Rzz.h5"
-	h5open(output_filename, "w") do file
-		write(file, "cost function", cost_function)
-		write(file, "fidelity0", fidelity₀)
-		write(file, "Wp_0", evals₀)
-		write(file, "Wp_1", evals₁)
-		write(file, "Wp_2", evals₂)
-		write(file, "optimization trace", optimization_trace)
-		write(file, "fidelity trace", fidelity_trace)
-	end
+	# """Save the optimization results in an HDF5 file for future analysis and visualization"""
+	# output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(n_layers)_Rzz.h5"
+	# h5open(output_filename, "w") do file
+	# 	write(file, "cost function", cost_function)
+	# 	write(file, "fidelity0", fidelity₀)
+	# 	write(file, "Wp_0", evals₀)
+	# 	write(file, "Wp_1", evals₁)
+	# 	write(file, "Wp_2", evals₂)
+	# 	write(file, "optimization trace", optimization_trace)
+	# 	write(file, "fidelity trace", fidelity_trace)
+	# end
 
 
 	
@@ -293,65 +294,22 @@ let
 		# optimization history.
 		# ---------------------------------------------------------------------------
 	"""
-	psi_test = MPS(sites, state)
-	for gate_layer in circuit_gates
-		psi_test = apply(gate_layer, psi_test; cutoff=cutoff)	
-	end
-	normalize!(psi_test)
+	result  = validate_plaquettes(circuit_gates, sites, state, ψ_T; width = 4)
 	
-	
-	# Plaquette-operator definition.  Each row of `plaquette_sites` lists the six
-	# sites of a hexagonal plaquette in the order they receive the operators in
-	# `plaquette_ops`, so that Wp = (iY)_{r1} ⊗ Z_{r2} ⊗ X_{r3} ⊗ X_{r4} ⊗ Z_{r5} ⊗ (iY)_{r6}.
-	plaquette_operator = Vector{String}(["iY", "Z", "X", "X", "Z", "iY"])
-	indices = hexagonal_plaquettes(N, 4)   # Generate the indices for each hexagonal plaquette on the width-four cylinder geometry
-	@show indices
-
-
-	# Compute the expectation value of the plaquette operator defined on each hexagonal plaquette 
-	# using both the optimized MPS and the target MPS, and compare the results.
-	evals₁ = zeros(Float64, axes(indices, 1))
-	evals₂ = similar(evals₁)
-
-	for (idx, tmp) in enumerate(indices)
-		@show idx, tmp
-		os_wp = OpSum()
-		os_wp += plaquette_operator[1], tmp[1], 
-			plaquette_operator[2], tmp[2], 
-			plaquette_operator[3], tmp[3], 
-			plaquette_operator[4], tmp[4], 
-			plaquette_operator[5], tmp[5], 
-			plaquette_operator[6], tmp[6]
-		WP = MPO(os_wp, sites)
-
-
-		# Validate the expectation values of the plaquette operators using the optimized MPS
-		z₁ = inner(psi_test', WP, psi_test)
-		abs(imag(z₁)) < 1e-8 || @warn "Non-negligible imaginary part: $z₁"
-		
-		
-		# Validate the expectation values of the plaquette operators using the target MPS
-		z₂ = inner(ψ_T', WP, ψ_T)
-		abs(imag(z₂)) < 1e-8 || @warn "Non-negligible imaginary part: $z₂"
- 
-		evals₁[idx] = -real(z₁)
-		evals₂[idx] = -real(z₂)
-	end
-	println("\nExpectation values of the plaquette operators defined on each hexagonal plaquette using the optimized MPS: ")
-	@show evals₁
-	println("\nExpectation values of the plaquette operators defined on each hexagonal plaquette using the target MPS: ")
-	@show evals₂
-
-	println(repeat("#", 200))
-	println(repeat("#", 200))
+	println("\n⟨Wp⟩ per plaquette")
+	println("─"^300)
+	@printf "  %-12s %s\n" "optimized" join((@sprintf("%+.8f", x) for x in result.wp_opt), "  ")
+	@printf "  %-12s %s\n" "target"    join((@sprintf("%+.8f", x) for x in result.wp_target), "  ")
+	# @printf "  %-12s max |⟨Wp⟩ - 1| = %.2e\n" "deviation" maximum(abs, result.wp_opt .- 1)
+	println("─"^300, "\n")
   
 
 	# # Save the expectation values of the plaquette operators in an HDF5 file
 	# h5open(output_filename, "r+") do file
-	# 	write(file, "Wp_1", evals₁)
-	# 	write(file, "Wp_2", evals₂)
+	# 	write(file, "Wp_opt", result.wp_opt)
+	# 	write(file, "Wp_target", result.wp_target)
 	# end
-	
+
 
   return
 end
