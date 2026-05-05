@@ -6,6 +6,7 @@ using ITensors
 using ITensorMPS
 
 include("plaquette.jl")
+include("honeycomb.jl")
 
 const PLAQUETTE_OPS = ("iY", "Z", "X", "X", "Z", "iY")
 
@@ -76,4 +77,123 @@ function measure_plaquettes(ψ::MPS, sites; width::Integer = 4)
     plaquettes = hexagonal_plaquettes(length(sites), width)
     wp = [-real(inner(ψ', plaquette_mpo(p, sites), ψ)) for p in plaquettes]
     return (; wp, plaquettes)
+end
+
+
+
+
+
+"""
+    validate_energy & construct the energy MPO
+"""
+
+function energy_mpo(input_ψ, Nx, Ny, Jx, Jy, Jz, κ)
+    lattice_bonds = honeycomb_lattice_Cstyle(Nx, Ny; yperiodic=true)
+
+    """Construc the Kitaev Hamiltonian as an MPO using the OpSum interface"""
+    os = OpSum()
+    
+    # ---------------------------------------------------------------------------
+    # Set up the two-body interaction terms in the Hamiltonian
+    # ---------------------------------------------------------------------------
+
+    # Count the numbers of ⟨SxSx⟩, ⟨SySy⟩, ⟨SzSz⟩ bonds
+    xbond, ybond, zbond = 0, 0, 0        
+
+    for b in lattice_bonds
+        xcoordinate = 2 * div(b.s1 - 1, 2 * Ny) + (iseven(b.s1) ? 2 : 1)
+        ycoordinate = div(mod(b.s1 - 1, 2 * Ny), 2) + 1
+        # @show b.s1, xcoordinate, ycoordinate
+
+        if mod(xcoordinate, 2) == 0
+        os .+= -Jy, "Sy", b.s1, "Sy", b.s2
+        @show b.s1, b.s2, "Sy"
+        ybond += 1
+        else
+        if b.s2 - b.s1 == 1
+            os .+= -Jx, "Sx", b.s1, "Sx", b.s2
+            @show b.s1, b.s2, "Sx"
+            xbond += 1
+        else
+            os .+= -Jz, "Sz", b.s1, "Sz", b.s2
+            @show b.s1, b.s2, "Sz"
+            zbond += 1
+        end
+        end
+    end
+    # @show xbond, ybond, zbond
+
+
+    # ---------------------------------------------------------------------------
+    # Set up the three-spin interaction terms in the Hamiltonian
+    # ---------------------------------------------------------------------------
+
+    count = 0
+    for w in wedge 
+        # Calculate the (x, y) coordinates of the site n based on C-style ordering
+        tmp = div(w.s2 - 1, 2 * Ny)
+        x = 2 * tmp + mod(w.s2 - 1, 2) + 1
+        y = mod(div(w.s2 - 1, 2), Ny) + 1
+
+        if mod(x, 2) == 1
+            if w.s1 - w.s2 == 1 && w.s3 - w.s2 == 2 * Ny - 1
+                os .+= κ, "Sx", w.s1, "Sy", w.s2, "Sz", w.s3
+                @show w.s1, w.s2, w.s3, "Sx", "Sy", "Sz"
+                count += 1
+            end
+
+            if w.s3 - w.s2 == 1 && w.s2 - w.s1 == 1
+                os .+= κ, "Sz", w.s1, "Sy", w.s2, "Sx", w.s3
+                @show w.s1, w.s2, w.s3, "Sz", "Sy", "Sx"
+                count += 1
+            end 
+
+            if x != 1 && w.s2 - w.s1 == 2 * Ny - 1
+                if w.s3 - w.s2 == 1
+                    os .+= κ, "Sy", w.s1, "Sz", w.s2, "Sx", w.s3
+                    @show w.s1, w.s2, w.s3, "Sy", "Sz", "Sx"
+                    count += 1  
+                else
+                    os .+= κ, "Sy", w.s1, "Sx", w.s2, "Sz", w.s3
+                    @show w.s1, w.s2, w.s3, "Sy", "Sx", "Sz"
+                    count += 1  
+                end
+            end
+        else
+            if w.s3 - w.s2 == w.s2 - w.s1 == 1
+                os .+= κ, "Sx", w.s1, "Sy", w.s2, "Sz", w.s3
+                @show w.s1, w.s2, w.s3, "Sx", "Sy", "Sz"
+                count += 1
+            end
+
+            if w.s2 - w.s3 == 1 && w.s2 - w.s1 == 2 * Ny - 1
+                os .+= κ, "Sz", w.s1, "Sy", w.s2, "Sx", w.s3
+                @show w.s1, w.s2, w.s3, "Sz", "Sy", "Sx"
+                count += 1
+            end
+
+            if x != Nx && w.s3 - w.s2 == 2 * Ny - 1
+                if w.s2 - w.s1 == 1
+                    os .+= κ, "Sx", w.s1, "Sz", w.s2, "Sy", w.s3
+                    @show w.s1, w.s2, w.s3, "Sx", "Sz", "Sy"
+                    count += 1
+                else
+                    os .+= κ, "Sz", w.s1, "Sx", w.s2, "Sy", w.s3
+                    @show w.s1, w.s2, w.s3, "Sz", "Sx", "Sy"
+                    count += 1
+                end
+            end
+        end
+    end
+    @show count 
+
+    if count != length(wedge)
+        error("The number of three-spin interaction terms generated does not match the expected number.")
+    end
+
+    sites = siteinds(input_ψ)
+    Hamiltonian = MPO(os, sites)
+
+    return Hamiltonian
+
 end
