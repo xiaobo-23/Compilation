@@ -90,7 +90,10 @@ Build the Kitaev honeycomb Hamiltonian as an MPO on the C-style site labelling:
 
     H = -Jx Σ Sxᵢ Sxⱼ  - Jy Σ Syᵢ Syⱼ  - Jz Σ Szᵢ Szⱼ
         + κ  Σ Sᵅᵢ Sᵝⱼ Sᵞₖ      (three-spin "wedge" terms)
-Set `κ = 0.0` to skip the three-spin construction.
+        
+Bond and wedge dispatch matches `src_evolution/kitaev_honeycomb.jl`, so the MPO
+is consistent with the ground-state MPS stored in `data/kitaev_honeycomb_*.h5`.
+Set `κ = 0.0` to skip the wedge construction.
 """
 
 function energy_mpo(sites; Nx::Integer, Ny::Integer, 
@@ -104,13 +107,11 @@ function energy_mpo(sites; Nx::Integer, Ny::Integer,
     os = OpSum()
     
 
-
     # ── two-body Kitaev bonds ─────────────────────────────────────────────────
     bonds = honeycomb_lattice_Cstyle(Nx, Ny; yperiodic=yperiodic)
     xbond, ybond, zbond = 0, 0, 0
 
 
-    
     for b in bonds
         xcoord = 2 * div(b.s1 - 1, 2 * Ny) + (iseven(b.s1) ? 2 : 1)
 
@@ -133,69 +134,71 @@ function energy_mpo(sites; Nx::Integer, Ny::Integer,
 
 
     # ── three-spin (wedge) terms ─────────────────────────────────────────
-    count = 0
-    for w in wedge 
-        # Calculate the (x, y) coordinates of the site n based on C-style ordering
-        tmp = div(w.s2 - 1, 2 * Ny)
-        x = 2 * tmp + mod(w.s2 - 1, 2) + 1
-        y = mod(div(w.s2 - 1, 2), Ny) + 1
+    if abs(κ) > 1e-12
+        wedge = honeycomb_Cstyle_wedges(Nx, Ny; yperiodic=yperiodic)
+        count = 0
+        
+        for w in wedge 
+            tmp = div(w.s2 - 1, 2 * Ny)
+            x = 2 * tmp + mod(w.s2 - 1, 2) + 1
+            # y = mod(div(w.s2 - 1, 2), Ny) + 1
 
-        if mod(x, 2) == 1
-            if w.s1 - w.s2 == 1 && w.s3 - w.s2 == 2 * Ny - 1
-                os .+= κ, "Sx", w.s1, "Sy", w.s2, "Sz", w.s3
-                @show w.s1, w.s2, w.s3, "Sx", "Sy", "Sz"
-                count += 1
-            end
-
-            if w.s3 - w.s2 == 1 && w.s2 - w.s1 == 1
-                os .+= κ, "Sz", w.s1, "Sy", w.s2, "Sx", w.s3
-                @show w.s1, w.s2, w.s3, "Sz", "Sy", "Sx"
-                count += 1
-            end 
-
-            if x != 1 && w.s2 - w.s1 == 2 * Ny - 1
-                if w.s3 - w.s2 == 1
-                    os .+= κ, "Sy", w.s1, "Sz", w.s2, "Sx", w.s3
-                    @show w.s1, w.s2, w.s3, "Sy", "Sz", "Sx"
-                    count += 1  
-                else
-                    os .+= κ, "Sy", w.s1, "Sx", w.s2, "Sz", w.s3
-                    @show w.s1, w.s2, w.s3, "Sy", "Sx", "Sz"
-                    count += 1  
+            if isodd(x)
+                if w.s1 - w.s2 == 1 && w.s3 - w.s2 == 2 * Ny - 1
+                    os .+= κ, "Sx", w.s1, "Sy", w.s2, "Sz", w.s3
+                    # @show w.s1, w.s2, w.s3, "Sx", "Sy", "Sz"
+                    count += 1
                 end
-            end
-        else
-            if w.s3 - w.s2 == w.s2 - w.s1 == 1
-                os .+= κ, "Sx", w.s1, "Sy", w.s2, "Sz", w.s3
-                @show w.s1, w.s2, w.s3, "Sx", "Sy", "Sz"
-                count += 1
-            end
 
-            if w.s2 - w.s3 == 1 && w.s2 - w.s1 == 2 * Ny - 1
-                os .+= κ, "Sz", w.s1, "Sy", w.s2, "Sx", w.s3
-                @show w.s1, w.s2, w.s3, "Sz", "Sy", "Sx"
-                count += 1
-            end
+                if w.s3 - w.s2 == 1 && w.s2 - w.s1 == 1
+                    os .+= κ, "Sz", w.s1, "Sy", w.s2, "Sx", w.s3
+                    # @show w.s1, w.s2, w.s3, "Sz", "Sy", "Sx"
+                    count += 1
+                end 
 
-            if x != Nx && w.s3 - w.s2 == 2 * Ny - 1
-                if w.s2 - w.s1 == 1
-                    os .+= κ, "Sx", w.s1, "Sz", w.s2, "Sy", w.s3
-                    @show w.s1, w.s2, w.s3, "Sx", "Sz", "Sy"
+                if x != 1 && w.s2 - w.s1 == 2 * Ny - 1
+                    if w.s3 - w.s2 == 1
+                        os .+= κ, "Sy", w.s1, "Sz", w.s2, "Sx", w.s3
+                        # @show w.s1, w.s2, w.s3, "Sy", "Sz", "Sx"
+                        count += 1  
+                    else
+                        os .+= κ, "Sy", w.s1, "Sx", w.s2, "Sz", w.s3
+                        # @show w.s1, w.s2, w.s3, "Sy", "Sx", "Sz"
+                        count += 1  
+                    end
+                end
+            else
+                if w.s3 - w.s2 == w.s2 - w.s1 == 1
+                    os .+= κ, "Sx", w.s1, "Sy", w.s2, "Sz", w.s3
+                    # @show w.s1, w.s2, w.s3, "Sx", "Sy", "Sz"
                     count += 1
-                else
-                    os .+= κ, "Sz", w.s1, "Sx", w.s2, "Sy", w.s3
-                    @show w.s1, w.s2, w.s3, "Sz", "Sx", "Sy"
+                end
+
+                if w.s2 - w.s3 == 1 && w.s2 - w.s1 == 2 * Ny - 1
+                    os .+= κ, "Sz", w.s1, "Sy", w.s2, "Sx", w.s3
+                    # @show w.s1, w.s2, w.s3, "Sz", "Sy", "Sx"
                     count += 1
+                end
+
+                if x != Nx && w.s3 - w.s2 == 2 * Ny - 1
+                    if w.s2 - w.s1 == 1
+                        os .+= κ, "Sx", w.s1, "Sz", w.s2, "Sy", w.s3
+                        # @show w.s1, w.s2, w.s3, "Sx", "Sz", "Sy"
+                        count += 1
+                    else
+                        os .+= κ, "Sz", w.s1, "Sx", w.s2, "Sy", w.s3
+                        # @show w.s1, w.s2, w.s3, "Sz", "Sx", "Sy"
+                        count += 1
+                    end
                 end
             end
         end
-    end
-    @show count 
+        # @show count
 
-    if count != length(wedge)
-        error("The number of three-spin interaction terms generated does not match the expected number.")
+        count == length(wedges) || error(
+            "Wedge dispatch covered $count of $(length(wedges)) wedges — bond classification is inconsistent.")
     end
 
-    Hamiltonian = MPO(os, sites)
-    return Hamiltonian
+
+    return MPO(os, sites)
 end
