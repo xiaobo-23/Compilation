@@ -82,52 +82,57 @@ end
 
 
 
-
 """
-    validate_energy & construct the energy MPO
+    energy_mpo(sites; Nx, Ny, Jx = 1.0, Jy = 1.0, Jz = 1.0, κ = 0.0,
+               yperiodic::Bool = true) -> MPO
+
+Build the Kitaev honeycomb Hamiltonian as an MPO on the C-style site labelling:
+
+    H = -Jx Σ Sxᵢ Sxⱼ  - Jy Σ Syᵢ Syⱼ  - Jz Σ Szᵢ Szⱼ
+        + κ  Σ Sᵅᵢ Sᵝⱼ Sᵞₖ      (three-spin "wedge" terms)
+Set `κ = 0.0` to skip the three-spin construction.
 """
 
-function energy_mpo(input_ψ, Nx, Ny, Jx, Jy, Jz, κ)
-    lattice_bonds = honeycomb_lattice_Cstyle(Nx, Ny; yperiodic=true)
+function energy_mpo(sites; Nx::Integer, Ny::Integer, 
+                    Jx::Real = 1.0, Jy::Real = 1.0, Jz::Real = 1.0, 
+                    κ::Real  = 0.0, yperiodic::Bool = true)
 
-    """Construc the Kitaev Hamiltonian as an MPO using the OpSum interface"""
+    @assert length(sites) == Nx * Ny "sites length $(length(sites)) ≠ Nx*Ny = $(Nx*Ny)"
+    
+    
+    # Set up the Hamiltonian with two-body and three-spin terms as an MPO
     os = OpSum()
     
-    # ---------------------------------------------------------------------------
-    # Set up the two-body interaction terms in the Hamiltonian
-    # ---------------------------------------------------------------------------
 
-    # Count the numbers of ⟨SxSx⟩, ⟨SySy⟩, ⟨SzSz⟩ bonds
-    xbond, ybond, zbond = 0, 0, 0        
 
-    for b in lattice_bonds
-        xcoordinate = 2 * div(b.s1 - 1, 2 * Ny) + (iseven(b.s1) ? 2 : 1)
-        ycoordinate = div(mod(b.s1 - 1, 2 * Ny), 2) + 1
-        # @show b.s1, xcoordinate, ycoordinate
+    # ── two-body Kitaev bonds ─────────────────────────────────────────────────
+    bonds = honeycomb_lattice_Cstyle(Nx, Ny; yperiodic=yperiodic)
+    xbond, ybond, zbond = 0, 0, 0
 
-        if mod(xcoordinate, 2) == 0
-        os .+= -Jy, "Sy", b.s1, "Sy", b.s2
-        @show b.s1, b.s2, "Sy"
-        ybond += 1
-        else
-        if b.s2 - b.s1 == 1
+
+    
+    for b in bonds
+        xcoord = 2 * div(b.s1 - 1, 2 * Ny) + (iseven(b.s1) ? 2 : 1)
+
+        if iseven(xcoord)
+            os .+= -Jy, "Sy", b.s1, "Sy", b.s2
+            # @show b.s1, b.s2, "Sy"
+            ybond += 1
+        elseif b.s2 - b.s1 == 1
             os .+= -Jx, "Sx", b.s1, "Sx", b.s2
-            @show b.s1, b.s2, "Sx"
+            # @show b.s1, b.s2, "Sx"
             xbond += 1
         else
             os .+= -Jz, "Sz", b.s1, "Sz", b.s2
-            @show b.s1, b.s2, "Sz"
+            # @show b.s1, b.s2, "Sz"
             zbond += 1
         end
-        end
     end
-    # @show xbond, ybond, zbond
+    xbond + ybond + zbond == length(bonds) || error(
+            "Setting up $(xbond + ybond + zbond) bonds instead of $(length(bonds)) inconsistent.")
 
 
-    # ---------------------------------------------------------------------------
-    # Set up the three-spin interaction terms in the Hamiltonian
-    # ---------------------------------------------------------------------------
-
+    # ── three-spin (wedge) terms ─────────────────────────────────────────
     count = 0
     for w in wedge 
         # Calculate the (x, y) coordinates of the site n based on C-style ordering
@@ -191,9 +196,6 @@ function energy_mpo(input_ψ, Nx, Ny, Jx, Jy, Jz, κ)
         error("The number of three-spin interaction terms generated does not match the expected number.")
     end
 
-    sites = siteinds(input_ψ)
     Hamiltonian = MPO(os, sites)
-
     return Hamiltonian
-
 end
