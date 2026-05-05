@@ -14,8 +14,8 @@ const PLAQUETTE_OPS = ("iY", "Z", "X", "X", "Z", "iY")
 """
     plaquette_mpo(p_sites, sites)
 
-    Build the Kitaev plaquette MPO `Wp = (iY) Z X X Z (iY)` on the six ordered
-    sites in `p_sites`.
+Build the Kitaev plaquette MPO `Wp = (iY) Z X X Z (iY)` on the six ordered
+sites in `p_sites`.
 """
 
 function plaquette_mpo(p_sites, sites)
@@ -28,15 +28,15 @@ end
 """
     validate_plaquettes(circuit_gates, sites, state, ψ_T; width = 4, cutoff = 1e-10) -> NamedTuple
 
-    Apply `circuit_gates` to the product state defined by `state` on `sites`
-    and return the plaquette expectation values ⟨Wp⟩ on both the compiled and
-    target MPS for a width-`width` honeycomb cylinder.
+Apply `circuit_gates` to the product state defined by `state` on `sites`
+and return the plaquette expectation values ⟨Wp⟩ on both the compiled and
+target MPS for a width-`width` honeycomb cylinder.
 
-    In the Kitaev spin-liquid ground state every ⟨Wp⟩ = +1, so closeness of
-    `wp_opt` to `+1` is the local flux-sector check that should pass even at
-    moderate global fidelity.
+In the Kitaev spin-liquid ground state every ⟨Wp⟩ = +1, so closeness of
+`wp_opt` to `+1` is the local flux-sector check that should pass even at
+moderate global fidelity.
 
-    Returns `(; ψ_opt, wp_opt, wp_target, plaquettes)`.
+Returns `(; ψ_opt, wp_opt, wp_target, plaquettes)`.
 """
 
 function validate_plaquettes(circuit_gates, sites, state, ψ_T; 
@@ -64,13 +64,13 @@ end
 """
     measure_plaquettes(ψ::MPS, sites; width = 4) -> NamedTuple
  
-    Measure the Kitaev plaquette expectation values ⟨Wp⟩ on a pre-existing MPS
-    `ψ` for a width-`width` honeycomb cylinder.
-    
-    Use this when `ψ` has already been prepared (e.g. by flux-sector projection
-    of the initial product state) and you only need to measure, not compile.
-    
-    Returns `(; wp, plaquettes)`.
+Measure the Kitaev plaquette expectation values ⟨Wp⟩ on a pre-existing MPS
+`ψ` for a width-`width` honeycomb cylinder.
+
+Use this when `ψ` has already been prepared (e.g. by flux-sector projection
+of the initial product state) and you only need to measure, not compile.
+
+Returns `(; wp, plaquettes)`.
 """
 
 function measure_plaquettes(ψ::MPS, sites; width::Integer = 4)
@@ -90,7 +90,7 @@ Build the Kitaev honeycomb Hamiltonian as an MPO on the C-style site labelling:
 
     H = -Jx Σ Sxᵢ Sxⱼ  - Jy Σ Syᵢ Syⱼ  - Jz Σ Szᵢ Szⱼ
         + κ  Σ Sᵅᵢ Sᵝⱼ Sᵞₖ      (three-spin "wedge" terms)
-        
+
 Bond and wedge dispatch matches `src_evolution/kitaev_honeycomb.jl`, so the MPO
 is consistent with the ground-state MPS stored in `data/kitaev_honeycomb_*.h5`.
 Set `κ = 0.0` to skip the wedge construction.
@@ -135,7 +135,7 @@ function energy_mpo(sites; Nx::Integer, Ny::Integer,
 
     # ── three-spin (wedge) terms ─────────────────────────────────────────
     if abs(κ) > 1e-12
-        wedge = honeycomb_Cstyle_wedges(Nx, Ny; yperiodic=yperiodic)
+        wedge = honeycomb_Cstyle_wedge(Nx, Ny; yperiodic=yperiodic)
         count = 0
         
         for w in wedge 
@@ -195,10 +195,25 @@ function energy_mpo(sites; Nx::Integer, Ny::Integer,
         end
         # @show count
 
-        count == length(wedges) || error(
+        count == length(wedge) || error(
             "Wedge dispatch covered $count of $(length(wedges)) wedges — bond classification is inconsistent.")
     end
 
-
     return MPO(os, sites)
+end
+
+
+
+"""
+    measure_energy(ψ::MPS, H::MPO) -> NamedTuple
+
+Return `(; E, variance)` where `E = ⟨ψ|H|ψ⟩` and
+`variance = ⟨ψ|H²|ψ⟩ - E²`. The variance is small when ψ is close to an
+eigenstate of H — useful as a quality check independent of fidelity.
+"""
+
+function measure_energy(ψ::MPS, H::MPO)
+    E  = real(inner(ψ', H, ψ))
+    H2 = real(inner(H, ψ, H, ψ))
+    return (; E, variance = H2 - E^2)
 end

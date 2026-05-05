@@ -19,7 +19,6 @@ include("validation.jl")
 
 
 
-
 # Set up parameters for multithreading and parallelization
 BLAS.set_num_threads(8)
 @info "BLAS configuration" vendor=BLAS.vendor() config=BLAS.get_config() threads=BLAS.get_num_threads()
@@ -31,7 +30,7 @@ println()
 
 
 # ─── Compilation parameters ──────────────────────────────────────────────
-const N = 48                             # Total number of qubits
+const N = 24                             # Total number of qubits
 const J₁ = 1.0
 const τ = 1.0
 const cutoff = 1e-4
@@ -49,16 +48,17 @@ let
 	println("Variational circuit compilation: ground state preparation for the interferometer based on the Kitaev honeycomb model")
 	println("─"^70, "\n")
 
-	
-	# Load the target ground-state MPS (e.g. Kitaev honeycomb, κ = 0.4, 6×4).
+
+	# Load the target ground-state MPS (e.g. Kitaev honeycomb).
 	target_mps_path = joinpath(@__DIR__, "..", "data", 
-		"kitaev_honeycomb_kappa-0.4_Lx6_Ly4.h5")
+		"kitaev_honeycomb_kappa-0.4_Lx4_Ly3.h5")
 
 	ψ_T, sites = h5open(target_mps_path, "r") do file
 		ψ = read(file, "psi", MPS)
 		return ψ, siteinds(ψ)
 	end
 	@info "Loaded target MPS" path=target_mps_path N=length(sites) maxlinkdim=maxlinkdim(ψ_T)
+	println()
 
 
 	# ── Initialize the trial MPS as a product state. ─────────────────────────
@@ -116,7 +116,6 @@ let
 	@printf "  ⟨ψ_T | ψ₀⟩          : %+.6f %+.6fi\n" real(fidelity₀)   imag(fidelity₀)
 	@printf "  ⟨ψ_T | ψ₀⟩ rotated  : %+.6f %+.6fi\n" real(fidelity₀_rotated) imag(fidelity₀_rotated)
 	println("⟨Wp⟩ on each hexagon:           ", evals₀)
-
 
 
 	
@@ -272,20 +271,35 @@ let
 	
 	
 	
-	# ---------------------------------------------------------------------------
-	# Validate the optimized circuit by measuring the hexagonal plaquette
-	# operators on both the compiled MPS and the target MPS, and report the
-	# optimization history.
-	# ---------------------------------------------------------------------------
-	result  = validate_plaquettes(circuit_gates, sites, state, ψ_T; width = 4)
-	
+	# -----------------------------------------------------------------------------------
+	# Validate the optimized circuit by measuring the total energy of the system and
+	# the hexagonal plaquette operators on both the compiled MPS and the target MPS, 
+	# and report the optimization history.
+	# -----------------------------------------------------------------------------------
+	result  = validate_plaquettes(circuit_gates, sites, state, ψ_T; width = 3)
+
 	println("\n", "─"^70)
-	println("⟨Wp⟩ per plaquette")
+	println("⟨Wp⟩ on each plaquette")
 	println("─"^70)
 	@printf "  %-12s %s\n" "optimized" join((@sprintf("%+.8f", x) for x in result.wp_opt), "  ")
 	@printf "  %-12s %s\n" "target"    join((@sprintf("%+.8f", x) for x in result.wp_target), "  ")
-	# @printf "  %-12s max |⟨Wp⟩ - 1| = %.2e\n" "deviation" maximum(abs, result.wp_opt .- 1)
   
+
+	Hamiltonian = energy_mpo(sites; Nx = 8, Ny = 3, Jx = 1.0, Jy = 1.0, Jz = 1.0, κ = -0.4)
+	E_T, variance_T = measure_energy(ψ_T, Hamiltonian)
+	@show E_T, variance_T
+
+	E0_stored = h5open(target_mps_path, "r") do file; read(file, "E0"); end
+	@printf "  %-10s E0 = %+.8f   (|E_target − E0| = %.3e)\n" "stored" E0_stored abs(E_T - E0_stored)
+
+	
+	ψ_opt = MPS(sites, state)
+	for layer in circuit_gates
+		ψ_opt = apply(layer, ψ_opt; cutoff)
+	end
+	normalize!(ψ_opt)	
+	E_opt, variance_opt = measure_energy(ψ_opt, Hamiltonian)
+
 
 	# Save the expectation values of the plaquette operators in an HDF5 file
 	# h5open(output_filename, "r+") do file
