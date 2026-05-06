@@ -41,8 +41,8 @@ is the local flux-sector check that should pass even at moderate global fidelity
 
 Returns `(; wp, plaquettes)`.
 """
-function measure_plaquettes(ψ::MPS, sites; width::Integer = 4)
-    plaquettes = hexagonal_plaquettes(length(sites), width)
+function measure_plaquettes(ψ::MPS, sites; Ny::Integer)
+    plaquettes = hexagonal_plaquettes(length(sites), Ny)
     wp = [-real(inner(ψ', plaquette_mpo(p, sites), ψ)) for p in plaquettes]
     return (; wp, plaquettes)
 end
@@ -107,7 +107,6 @@ function energy_mpo(sites; Nx::Integer, Ny::Integer,
         for w in wedge 
             tmp = div(w.s2 - 1, 2 * Ny)
             x = 2 * tmp + mod(w.s2 - 1, 2) + 1
-            # y = mod(div(w.s2 - 1, 2), Ny) + 1
 
             if isodd(x)
                 if w.s1 - w.s2 == 1 && w.s3 - w.s2 == 2 * Ny - 1
