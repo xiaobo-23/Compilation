@@ -160,7 +160,7 @@ function energy_mpo(sites; Nx::Integer, Ny::Integer,
         # @show count
 
         count == length(wedge) || error(
-            "Wedge dispatch covered $count of $(length(wedges)) wedges — bond classification is inconsistent.")
+            "Wedge dispatch covered $count of $(length(wedge)) wedges — bond classification is inconsistent.")
     end
 
     return MPO(os, sites)
@@ -200,10 +200,12 @@ moderate global fidelity.
 Returns `(; ψ_opt, E_opt, var_opt, wp_opt, plaquettes)`.
 """
 
-function validate_circuit(circuit_gates, sites, state; 
-        length::Integer = 6, width::Integer = 4, input_Jx::Real = 1.0, input_Jy::Real = 1.0, input_Jz::Real = 1.0,
-        input_κ::Real = -0.4, cutoff::Real = 1e-10)
+function validate_circuit(circuit_gates, sites, state;
+        Nx::Integer, Ny::Integer = 4,
+        Jx::Real = 1.0, Jy::Real = 1.0, Jz::Real = 1.0, κ::Real = -0.4,
+        cutoff::Real = 1e-10)
     
+
     # Apply the optimized circuit to the initial product state.
     ψ_opt = MPS(sites, state)
     for layer in circuit_gates
@@ -211,23 +213,29 @@ function validate_circuit(circuit_gates, sites, state;
     end
     normalize!(ψ_opt)
 
-    # Measure ⟨Wp⟩ on every plaquette, on both states.
-    plaquettes = hexagonal_plaquettes(length(sites), width)
+
+    # Measure ⟨Wp⟩ on every plaquette on the compiled MPS
+    plaquettes = hexagonal_plaquettes(length(sites), Ny)
     wp(ψ, p)   = -real(inner(ψ', plaquette_mpo(p, sites), ψ))
-
     wp_opt    = [wp(ψ_opt, p) for p in plaquettes]
-    Hamiltonian = energy_mpo(sites; Nx = length, Ny = width, Jx = input_Jx, Jy = input_Jy, Jz = input_Jz, κ = input_κ)
-    E_opt, var_opt = measure_energy(ψ_opt, Hamiltonian)
 
-    return (; ψ_opt, E_opt, var_opt, wp_opt, plaquettes)
+
+    # Energy & variance of the compiled state
+    Hamiltonian = energy_mpo(sites; Nx, Ny, Jx, Jy, Jz, κ)
+    en      = measure_energy(ψ_opt, Hamiltonian)
+    E_opt   = en.E
+    var_opt = en.variance
+
+    
+    return (; E_opt, var_opt, wp_opt, plaquettes)
 end
 
 
 
 """
     validate_reference(ψ_T; 
-        length::Integer = 6, width::Integer = 4, input_Jx::Real = 1.0, input_Jy::Real = 1.0, input_Jz::Real = 1.0,
-        input_κ::Real = -0.4, cutoff::Real = 1e-10) -> NamedTuple
+        Nx::Integer = 6, Ny::Integer = 4, Jx::Real = 1.0, Jy::Real = 1.0, Jz::Real = 1.0,
+        κ::Real = -0.4, cutoff::Real = 1e-10) -> NamedTuple
 
 Return the plaquette expectation values ⟨Wp⟩ on the reference MPS and the energy and 
 variance of the reference state.
@@ -236,24 +244,27 @@ In the Kitaev spin-liquid ground state every ⟨Wp⟩ = +1, so closeness of
 `wp_target` to `+1` is the local flux-sector check that should pass even at
 moderate global fidelity.
 
-Returns `(; E_opt, var_opt, wp_target, plaquettes)`.
+Returns `(; E_target, var_target, wp_target, plaquettes)`.
 """
 
 function validate_reference(ψ_T; 
-        length::Integer = 6, width::Integer = 4, input_Jx::Real = 1.0, input_Jy::Real = 1.0, input_Jz::Real = 1.0,
-        input_κ::Real = -0.4, cutoff::Real = 1e-10)
+        Nx::Integer = 6, Ny::Integer = 4, Jx::Real = 1.0, Jy::Real = 1.0, Jz::Real = 1.0, κ::Real = -0.4)
     
-    tmp_sites = siteinds(ψ_T)
+    sites = siteinds(ψ_T)
         
-
-    # Measure ⟨Wp⟩ on every plaquette, on both states.
-    plaquettes = hexagonal_plaquettes(length(tmp_sites), width)
-    wp(ψ, p)   = -real(inner(ψ', plaquette_mpo(p, tmp_sites), ψ))
+    
+    # Measure ⟨Wp⟩ on every plaquette on the target MPS
+    plaquettes = hexagonal_plaquettes(length(sites), Ny)
+    wp(ψ, p)   = -real(inner(ψ', plaquette_mpo(p, sites), ψ))
     wp_target = [wp(ψ_T,   p) for p in plaquettes]
 
 
-    Hamiltonian = energy_mpo(tmp_sites; Nx = length, Ny = width, Jx = input_Jx, Jy = input_Jy, Jz = input_Jz, κ = input_κ)
-    E_opt, var_opt = measure_energy(ψ_T, Hamiltonian)
+    # Energy & variance 
+    Hamiltonian = energy_mpo(sites; Nx, Ny, Jx, Jy, Jz, κ)
+    en      = measure_energy(ψ_T, Hamiltonian)
+    E_target   = en.E
+    var_target = en.variance
 
-    return (; E_opt, var_opt, wp_target, plaquettes)
+    
+    return (; E_target, var_target, wp_target, plaquettes)
 end

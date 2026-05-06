@@ -34,7 +34,7 @@ const N = 24                             # Total number of qubits
 const J₁ = 1.0
 const τ = 1.0
 const cutoff = 1e-4
-const nsweeps = 1
+const nsweeps = 25
 const default_iters = 25                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
 const stop_criteria = 1e-4               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
 
@@ -82,40 +82,40 @@ let
 	# Project the initial MPS into the same topological sector as the target MPS
 	# by applying ∏ₚ (1 + Wₚ)/√2, then align the global phase.
 	#---------------------------------------------------------------------------
-	println("─"^70)
-	println("Flux-sector projection of the initial MPS")
-	println("─"^70)
+	# println("─"^70)
+	# println("Flux-sector projection of the initial MPS")
+	# println("─"^70)
 	
 	
-	# Build one (1 + Wp)/√2 tensor per plaquette.
-	indices = hexagonal_plaquettes(N, 4)
-	projection = ITensor[]
-	for p_sites in indices
-		s = sites[p_sites]
+	# # Build one (1 + Wp)/√2 tensor per plaquette.
+	# indices = hexagonal_plaquettes(N, 4)
+	# projection = ITensor[]
+	# for p_sites in indices
+	# 	s = sites[p_sites]
 		
-		id_tensor = prod(op("Id", tmp_site) for tmp_site in s)
-		pauli_tensor = op("Y", s[1]) * op("Z", s[2]) * op("X", s[3]) * op("X", s[4]) * op("Z", s[5]) * op("Y", s[6])
+	# 	id_tensor = prod(op("Id", tmp_site) for tmp_site in s)
+	# 	pauli_tensor = op("Y", s[1]) * op("Z", s[2]) * op("X", s[3]) * op("X", s[4]) * op("Z", s[5]) * op("Y", s[6])
 
-		hj = (id_tensor + pauli_tensor) / sqrt(2)
-		push!(projection, hj)
-	end
+	# 	hj = (id_tensor + pauli_tensor) / sqrt(2)
+	# 	push!(projection, hj)
+	# end
 
 	
-	# Apply the projector and align the global phase to maximize Re⟨ψ_T | ψ₀⟩.
-	ψ₀ = apply(projection, ψ₀; cutoff=cutoff)
-	fidelity₀ = inner(ψ_T, ψ₀)
-	ϕ_phase = angle(fidelity₀)
-	ψ₀[1] = ψ₀[1] * exp(-im * ϕ_phase)
-	fidelity₀_rotated = inner(ψ_T, ψ₀)	
+	# # Apply the projector and align the global phase to maximize Re⟨ψ_T | ψ₀⟩.
+	# ψ₀ = apply(projection, ψ₀; cutoff=cutoff)
+	# fidelity₀ = inner(ψ_T, ψ₀)
+	# ϕ_phase = angle(fidelity₀)
+	# ψ₀[1] = ψ₀[1] * exp(-im * ϕ_phase)
+	# fidelity₀_rotated = inner(ψ_T, ψ₀)	
 	
 
-	# Diagnostics: bond dimensions, overlaps, and per-plaquette ⟨Wp⟩.
-	result_proj = measure_plaquettes(ψ₀, sites; width = 4)
-	evals₀      = result_proj.wp
-	@printf "  bond dimensions     : %s\n" linkdims(ψ₀)
-	@printf "  ⟨ψ_T | ψ₀⟩          : %+.6f %+.6fi\n" real(fidelity₀)   imag(fidelity₀)
-	@printf "  ⟨ψ_T | ψ₀⟩ rotated  : %+.6f %+.6fi\n" real(fidelity₀_rotated) imag(fidelity₀_rotated)
-	println("⟨Wp⟩ on each hexagon:           ", evals₀)
+	# # Diagnostics: bond dimensions, overlaps, and per-plaquette ⟨Wp⟩.
+	# result_proj = measure_plaquettes(ψ₀, sites; width = 4)
+	# evals₀      = result_proj.wp
+	# @printf "  bond dimensions     : %s\n" linkdims(ψ₀)
+	# @printf "  ⟨ψ_T | ψ₀⟩          : %+.6f %+.6fi\n" real(fidelity₀)   imag(fidelity₀)
+	# @printf "  ⟨ψ_T | ψ₀⟩ rotated  : %+.6f %+.6fi\n" real(fidelity₀_rotated) imag(fidelity₀_rotated)
+	# println("⟨Wp⟩ on each hexagon:           ", evals₀)
 
 
 	
@@ -153,106 +153,107 @@ let
 	
 
 
-	# """
-	# 	Optimize the parameters of all SU(4) gates in the circuit layer by layer
-	# """
-	# cost_function = zeros(Float64, nsweeps)
-	# reference = zeros(Float64, nsweeps)
-	# optimization_trace = Float64[]
-	# fidelity_trace = Float64[]
+	"""
+		Optimize the parameters of all SU(4) gates in the circuit layer by layer
+	"""
+	cost_function = zeros(Float64, nsweeps)
+	reference = zeros(Float64, nsweeps)
+	optimization_trace = Float64[]
+	fidelity_trace = Float64[]
 
 
-	# for iteration in 1 : nsweeps 
-	# 	# Optimize each layer of the two-qubit gate in a forward sweeping order 
-	# 	for layer_idx in 1 : length(circuit_gates)
-	# 		optimization_gates = circuit_gates[layer_idx]
-	# 		idx_pairs = input_pairs[layer_idx]
+	for iteration in 1 : nsweeps 
+		# Optimize each layer of the two-qubit gate in a forward sweeping order 
+		for layer_idx in 1 : length(circuit_gates)
+			optimization_gates = circuit_gates[layer_idx]
+			idx_pairs = input_pairs[layer_idx]
 
 			
-	# 		# Compress the optimization circuit from the initial MPS side
-	# 		ψ_left = deepcopy(ψ₀)
-	# 		if layer_idx > 1
-	# 			for idx in 1 : layer_idx - 1
-	# 				ψ_left = apply(circuit_gates[idx], ψ_left; cutoff=cutoff)
-	# 			end
-	# 			normalize!(ψ_left)
-	# 		end
-	# 		# ψ_left = ψ_ket_collection[layer_idx]
+			# Compress the optimization circuit from the initial MPS side
+			ψ_left = deepcopy(ψ₀)
+			if layer_idx > 1
+				for idx in 1 : layer_idx - 1
+					ψ_left = apply(circuit_gates[idx], ψ_left; cutoff=cutoff)
+				end
+				normalize!(ψ_left)
+			end
+			# ψ_left = ψ_ket_collection[layer_idx]
 			
 			
-	# 		# Compress the optimization circuit from the target MPS side 
-	# 		ψ_right = deepcopy(ψ_T)
-	# 		if layer_idx < length(circuit_gates)
-	# 			for tmp_idx in length(circuit_gates):-1:layer_idx + 1
-	# 				temporary_gates = deepcopy(circuit_gates[tmp_idx])
-	# 				for gate_idx in 1 : length(temporary_gates)
-	# 					temporary_gates[gate_idx] = dag(temporary_gates[gate_idx])
-	# 					swapprime!(temporary_gates[gate_idx], 0 => 1)
-	# 				end
-	# 				ψ_right = apply(temporary_gates, ψ_right; cutoff=cutoff)
-	# 			end
-	# 			normalize!(ψ_right)  
-	# 		end
-	# 		# ψ_right = ψ_bra_collection[layer_idx]
+			# Compress the optimization circuit from the target MPS side 
+			ψ_right = deepcopy(ψ_T)
+			if layer_idx < length(circuit_gates)
+				for tmp_idx in length(circuit_gates):-1:layer_idx + 1
+					temporary_gates = deepcopy(circuit_gates[tmp_idx])
+					for gate_idx in 1 : length(temporary_gates)
+						temporary_gates[gate_idx] = dag(temporary_gates[gate_idx])
+						swapprime!(temporary_gates[gate_idx], 0 => 1)
+					end
+					ψ_right = apply(temporary_gates, ψ_right; cutoff=cutoff)
+				end
+				normalize!(ψ_right)  
+			end
+			# ψ_right = ψ_bra_collection[layer_idx]
 			
  
 
-	# 		println("\n", repeat("#", 200))
-	# 		fidelity₁ = 0
-	# 		fidelity₂ = 0
+			println("\n", repeat("#", 200))
+			fidelity₁ = 0
+			fidelity₂ = 0
 
-	# 		for iter_idx in 1:default_iters
-	# 			# Update all gates from top to bottom
-	# 			println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: top-down sweeping")
-	# 			for idx in 1:length(idx_pairs)
-	# 				updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
-	# 					update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
-	# 				else
-	# 					update_Rzz(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], idx_pairs[idx][2], sites, cutoff)
-	# 				end
-	# 				optimization_gates[idx] = updated_gate
-	# 				append!(optimization_trace, tmp_trace)
-	# 				append!(fidelity_trace, tmp_cost)
-	# 			end
-	# 			println("\n")
+			for iter_idx in 1:default_iters
+				# Update all gates from top to bottom
+				println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: top-down sweeping")
+				for idx in 1:length(idx_pairs)
+					updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
+						update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
+					else
+						update_Rzz(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], idx_pairs[idx][2], sites, cutoff)
+					end
+					optimization_gates[idx] = updated_gate
+					append!(optimization_trace, tmp_trace)
+					append!(fidelity_trace, tmp_cost)
+				end
+				println("\n")
 
-	# 			# Update all gates from bottom to top
-	# 			println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: bottom-up sweeping")
-	# 			for idx in length(idx_pairs):-1:1
-	# 				updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
-	# 					update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
-	# 				else
-	# 					idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
-	# 					update_Rzz(ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, sites, cutoff)
-	# 				end
-	# 				optimization_gates[idx] = updated_gate
-	# 				append!(optimization_trace, tmp_trace)
-	# 				append!(fidelity_trace, tmp_cost)
-	# 			end
-	# 			println("\n")
+				# Update all gates from bottom to top
+				println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: bottom-up sweeping")
+				for idx in length(idx_pairs):-1:1
+					updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
+						update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
+					else
+						idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
+						update_Rzz(ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, sites, cutoff)
+					end
+					optimization_gates[idx] = updated_gate
+					append!(optimization_trace, tmp_trace)
+					append!(fidelity_trace, tmp_cost)
+				end
+				println("\n")
 
-	# 			fidelity₂ = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
-	# 			if iter_idx > 1 && abs(fidelity₂ - fidelity₁) < stop_criteria
-	# 				println("\nThe change of the cost function is smaller than the stopping criteria. Stop the optimization of gates in this layer.")
-	# 				println([fidelity₁, fidelity₂, abs(fidelity₂ - fidelity₁)])
-	# 				break
-	# 			end
-	# 			fidelity₁ = fidelity₂
-	# 		end
-	# 		println(repeat("#", 200), "\n")
-	# 	end
+				fidelity₂ = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
+				if iter_idx > 1 && abs(fidelity₂ - fidelity₁) < stop_criteria
+					println("\nThe change of the cost function is smaller than the stopping criteria. Stop the optimization of gates in this layer.")
+					println([fidelity₁, fidelity₂, abs(fidelity₂ - fidelity₁)])
+					break
+				end
+				fidelity₁ = fidelity₂
+			end
+			println(repeat("#", 200), "\n")
+		end
 
-	# 	# Compute the cost function after each sweep
-	# 	cost_function[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
-	# 	# reference[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, gates, cutoff)
-	# end
+		# Compute the cost function after each sweep
+		cost_function[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
+		# reference[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, gates, cutoff)
+	end
 
 	
-	# """Print the history of the cost function and the difference between the optimization trace and the fidelity trace in the terminal"""
-	# println("\nThe history of the cost function during the optimization: ")
-	# @show cost_function
-	# println("\nComputing the fidelity using two different approaches & the difference should fluctuate around zero with machine precision: ")
-	# @show (optimization_trace - fidelity_trace)[1 : 20]
+	"""Print the history of the cost function and the difference between the optimization trace and the fidelity trace in the terminal"""
+	println("\nThe history of the cost function during the optimization: ")
+	@show cost_function
+	println("\nComputing the fidelity using two different approaches & the difference should fluctuate around zero with machine precision: ")
+	@show (optimization_trace - fidelity_trace)[1 : 20]
+
 
 	
 	# """Save the optimization results in an HDF5 file for future analysis and visualization"""
@@ -269,42 +270,53 @@ let
 
 
 	
-	
-	
+
 	# -----------------------------------------------------------------------------------
 	# Validate the optimized circuit by measuring the total energy of the system and
 	# the hexagonal plaquette operators on both the compiled MPS and the target MPS, 
 	# and report the optimization history.
 	# -----------------------------------------------------------------------------------
-	result  = validate_plaquettes(circuit_gates, sites, state, ψ_T; width = 3)
+
+	# Single source of truth for the Kitaev parameters used by both validations.
+	model = (; Nx = 8, Ny = 3, Jx = 1.0, Jy = 1.0, Jz = 1.0, κ = -0.4)
+	compiled = validate_circuit(circuit_gates, sites, state; model..., cutoff)
+	target   = validate_reference(ψ_T;                       model...)
+
+
+	# Cross-check vs the DMRG ground-state energy stored alongside ψ_T.
+	# A large gap here points at energy_mpo (bond/wedge dispatch or κ sign).
+	E0_stored = h5open(target_mps_path, "r") do f; read(f, "E0"); end
+	ΔE0       = abs(target.E_target - E0_stored)
+	ΔE0 < 1e-6 || @warn "Computed target energy disagrees with stored E0" E0_stored target.E_target ΔE0
+
+
+	# Derives quantities for the report
+	ΔE       = compiled.E_opt - target.E_target
+	rel_err  = ΔE / abs(target.E_target)
+
+	
+	println("\n", "─"^70)
+	println("Energy, variance, fidelity")
+	println("─"^70)
+	@printf "  %-10s E = %+.8f    variance = %.3e\n"                          "target"   target.E_target target.var_target
+	@printf "  %-10s E = %+.8f    variance = %.3e\n"                          "compiled" compiled.E_opt  compiled.var_opt
+	@printf "  %-10s ΔE = %+.3e   (relative %.3e)\n"                          "gap"      ΔE rel_err
+
 
 	println("\n", "─"^70)
 	println("⟨Wp⟩ on each plaquette")
 	println("─"^70)
-	@printf "  %-12s %s\n" "optimized" join((@sprintf("%+.8f", x) for x in result.wp_opt), "  ")
-	@printf "  %-12s %s\n" "target"    join((@sprintf("%+.8f", x) for x in result.wp_target), "  ")
-  
+	@printf "  %-12s %s\n" "optimized" join((@sprintf("%+.8f", x) for x in compiled.wp_opt), "  ")
+	@printf "  %-12s %s\n" "target"    join((@sprintf("%+.8f", x) for x in target.wp_target), "  ")
 
-	Hamiltonian = energy_mpo(sites; Nx = 8, Ny = 3, Jx = 1.0, Jy = 1.0, Jz = 1.0, κ = -0.4)
-	E_T, variance_T = measure_energy(ψ_T, Hamiltonian)
-	@show E_T, variance_T
 
-	E0_stored = h5open(target_mps_path, "r") do file; read(file, "E0"); end
-	@printf "  %-10s E0 = %+.8f   (|E_target − E0| = %.3e)\n" "stored" E0_stored abs(E_T - E0_stored)
 
-	
-	ψ_opt = MPS(sites, state)
-	for layer in circuit_gates
-		ψ_opt = apply(layer, ψ_opt; cutoff)
-	end
-	normalize!(ψ_opt)	
-	E_opt, variance_opt = measure_energy(ψ_opt, Hamiltonian)
 
 
 	# Save the expectation values of the plaquette operators in an HDF5 file
 	# h5open(output_filename, "r+") do file
-	# 	write(file, "Wp_opt", result.wp_opt)
-	# 	write(file, "Wp_target", result.wp_target)
+	# 	write(file, "Wp_opt", compiled.wp_opt)
+	# 	write(file, "Wp_target", target.wp_target)
 	# end
 
 
