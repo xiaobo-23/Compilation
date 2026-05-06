@@ -35,10 +35,10 @@ const stop_criteria = 1e-4               # Stopping criteria for the optimizatio
 
 
 let
-	# ---------------------------------------------------------------------------
+	# -----------------------------------------------------------------------------------------
 	# Set up and optimize single-qubit & two-qubit gates to variationally
 	# compile the wave function of the Kitaev model on a cylinder.
-	# ---------------------------------------------------------------------------
+	# -----------------------------------------------------------------------------------------
 	println(repeat("-", 100))
 	println("Variational circuit compilation: ground state preparation for the interferometer based on the Kitaev honeycomb model")
 	println(repeat("-", 100), "\n")
@@ -69,18 +69,15 @@ let
 	# ψ₀	= random_mps(sites, state; linkdims = 8)  # bond-dimension-8 random MPS
 
 
-
 	#  ── Construct the Hamiltonian MPO for energy measurement. ─────────────── 
 	H = energy_mpo(sites; model...)
 	
 	
 	
-	
-
-	# ---------------------------------------------------------------------------
+	# -----------------------------------------------------------------------------------------
 	# Project the initial MPS into the same topological sector as the target MPS
 	# by applying ∏ₚ (1 + Wₚ)/√2, then align the global phase.
-	# ---------------------------------------------------------------------------
+	# -----------------------------------------------------------------------------------------
 	# println(repeat("-", 100))
 	# println("Flux-sector projection of the initial MPS")
 	# println(repeat("-", 100))
@@ -118,7 +115,7 @@ let
 
 
 	
-	# ---------------------------------------------------------------------------
+	# -----------------------------------------------------------------------------------------
 	# Build the variational brickwall ansatz used to compile the target MPS.
 	#
 	# Each repeating block has four sublayers:
@@ -128,10 +125,10 @@ let
 	#   4. two-qubit gates on even bonds (i, i+1), i = 2, 4, 6, …
 	# The block is repeated `n_layers` times and capped with a final
 	# single-qubit layer on every site.
-	# ---------------------------------------------------------------------------
+	# -----------------------------------------------------------------------------------------
 
 	# Configure the brickwall gate pattern by defining qubit indices
-	n_layers = 6
+	n_layers = 2
 	brickwall_block = [
 		[[i] for i in 1 : N],
 		[[i, i + 1] for i in 1 : 2 : N - 1],
@@ -157,6 +154,7 @@ let
 	# -----------------------------------------------------------------------------------------
 	cost_function = zeros(Float64, nsweeps)
 	energy_trace = zeros(Float64, nsweeps)
+	plaquette_trace = zeros(Float64, nsweeps, length(hexagonal_plaquettes(length(sites), model.Ny)))
 	optimization_trace = Float64[]
 	fidelity_trace = Float64[]
 
@@ -246,13 +244,16 @@ let
 			end
 		end
 
+
+
 		# Compute the cost function after each sweep
 		cost_function[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
-		en = measure_progress(sites, state, ψ_T, circuit_gates, H; cutoff=1e-10)
-		energy_trace[iteration] = en.energy
+		en = validate_circuit(circuit_gates, sites, state; Ny = model.Ny, Hamiltonian = H, cutoff=1e-10)
+		energy_trace[iteration] = en.E_opt
+		plaquette_trace[iteration, :] = en.wp_opt
 		
 		println("\n")
-		@printf "──── sweep %d/%d done   Fidelity = %+.6f   Energy = %+.6f\n" iteration nsweeps cost_function[iteration] en.energy
+		@printf "──── sweep %d/%d done  Fidelity = %+.6f  Energy = %+.6f\n" iteration nsweeps cost_function[iteration] en.E_opt
 		println(repeat("-", 100), "\n")
 	end
 	
@@ -264,7 +265,6 @@ let
 
 
 	
-	
 	# -----------------------------------------------------------------------------------------
 	# Save the optimization results in an HDF5 file for future analysis and visualization
 	# -----------------------------------------------------------------------------------------
@@ -273,6 +273,7 @@ let
 	h5open(output_filename, "w") do file
 		write(file, "cost_function", cost_function)
 		write(file, "energy_trace", energy_trace)
+		write(file, "plaquette_trace", plaquette_trace)
 		write(file, "optimization_trace", optimization_trace)
 		write(file, "fidelity_trace", fidelity_trace)
 		# write(file, "fidelity0", fidelity₀)
@@ -281,11 +282,11 @@ let
 
 
 
-	# -----------------------------------------------------------------------------------
+	# -----------------------------------------------------------------------------------------
 	# Validate the optimized circuit by measuring the total energy of the system and
 	# the hexagonal plaquette operators on both the compiled MPS and the target MPS, 
 	# and report the optimization history.
-	# -----------------------------------------------------------------------------------
+	# -----------------------------------------------------------------------------------------
 	compiled = validate_circuit(circuit_gates, sites, state; Ny = model.Ny, Hamiltonian = H, cutoff = cutoff)
 	target   = validate_reference(ψ_T;                       Ny = model.Ny, Hamiltonian = H)
 
@@ -305,9 +306,9 @@ let
 	println("\n", repeat("-", 100))
 	println("Energy, variance, fidelity")
 	println("─"^70)
-	@printf "  %-10s E = %+.8f    variance = %.3e\n"                          "target"   target.E_target target.var_target
-	@printf "  %-10s E = %+.8f    variance = %.3e\n"                          "compiled" compiled.E_opt  compiled.var_opt
-	@printf "  %-10s ΔE = %+.3e   (relative %.3e)\n"                          "gap"      ΔE rel_err
+	@printf "  %-10s E = %+.8f    variance = %.3e\n"		"target"   target.E_target target.var_target
+	@printf "  %-10s E = %+.8f    variance = %.3e\n"		"compiled" compiled.E_opt  compiled.var_opt
+	@printf "  %-10s ΔE = %+.3e   (relative %.3e)\n"		"gap"      ΔE rel_err
 
 
 	println("\n", repeat("-", 100))
