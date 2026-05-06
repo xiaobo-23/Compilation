@@ -8,7 +8,7 @@ using HDF5, MAT
 using Random
 using TimerOutputs
 using LinearAlgebra, MKL
-
+using Printf
 
 
 include("compute_cost_function.jl")
@@ -29,11 +29,11 @@ println()
 # OMP_NUM_THREADS = 8
 
 
+
 # ─── Compilation parameters ──────────────────────────────────────────────
 const N = 24                             # Total number of qubits
-const J₁ = 1.0
 const cutoff = 1e-4
-const nsweeps = 1
+const nsweeps = 2
 const default_iters = 25                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
 const stop_criteria = 1e-4               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
 const model = (; Nx = 8, Ny = 3, Jx = 1.0, Jy = 1.0, Jz = 1.0, κ = -0.4, yperiodic = true)
@@ -43,7 +43,7 @@ let
 	# ---------------------------------------------------------------------------
 	# Set up and optimize single-qubit & two-qubit gates to variationally
 	# compile the wave function of the Kitaev model on a cylinder.
-	#  ---------------------------------------------------------------------------
+	# ---------------------------------------------------------------------------
 	println(repeat("-", 100))
 	println("Variational circuit compilation: ground state preparation for the interferometer based on the Kitaev honeycomb model")
 	println(repeat("-", 100), "\n")
@@ -58,7 +58,7 @@ let
 		return ψ, siteinds(ψ)
 	end
 	@info "Loaded target MPS" path=target_mps_path N=length(sites) maxlinkdim=maxlinkdim(ψ_T)
-	println()
+	println("")
 
 
 	# ── Initialize the trial MPS as a product state. ─────────────────────────
@@ -80,44 +80,47 @@ let
 	H = energy_mpo(sites; model...)
 	
 	
-	# ---------------------------------------------------------------------------
-	# Project the initial MPS into the same topological sector as the target MPS
-	# by applying ∏ₚ (1 + Wₚ)/√2, then align the global phase.
-	# ---------------------------------------------------------------------------
-	println(repeat("-", 100))
-	println("Flux-sector projection of the initial MPS")
-	println(repeat("-", 100))
 	
 	
-	# Build one (1 + Wp)/√2 tensor per plaquette.
-	indices = hexagonal_plaquettes(N, 4)
-	projection = ITensor[]
-	for p_sites in indices
-		s = sites[p_sites]
+	
+	# # ---------------------------------------------------------------------------
+	# # Project the initial MPS into the same topological sector as the target MPS
+	# # by applying ∏ₚ (1 + Wₚ)/√2, then align the global phase.
+	# # ---------------------------------------------------------------------------
+	# println(repeat("-", 100))
+	# println("Flux-sector projection of the initial MPS")
+	# println(repeat("-", 100))
+	
+	
+	# # Build one (1 + Wp)/√2 tensor per plaquette.
+	# indices = hexagonal_plaquettes(N, 4)
+	# projection = ITensor[]
+	# for p_sites in indices
+	# 	s = sites[p_sites]
 		
-		id_tensor = prod(op("Id", tmp_site) for tmp_site in s)
-		pauli_tensor = op("Y", s[1]) * op("Z", s[2]) * op("X", s[3]) * op("X", s[4]) * op("Z", s[5]) * op("Y", s[6])
+	# 	id_tensor = prod(op("Id", tmp_site) for tmp_site in s)
+	# 	pauli_tensor = op("Y", s[1]) * op("Z", s[2]) * op("X", s[3]) * op("X", s[4]) * op("Z", s[5]) * op("Y", s[6])
 
-		hj = (id_tensor + pauli_tensor) / sqrt(2)
-		push!(projection, hj)
-	end
+	# 	hj = (id_tensor + pauli_tensor) / sqrt(2)
+	# 	push!(projection, hj)
+	# end
 
 	
-	# Apply the projector and align the global phase to maximize Re⟨ψ_T | ψ₀⟩.
-	ψ₀ = apply(projection, ψ₀; cutoff=cutoff)
-	fidelity₀ = inner(ψ_T, ψ₀)
-	ϕ_phase = angle(fidelity₀)
-	ψ₀[1] = ψ₀[1] * exp(-im * ϕ_phase)
-	fidelity₀_rotated = inner(ψ_T, ψ₀)	
+	# # Apply the projector and align the global phase to maximize Re⟨ψ_T | ψ₀⟩.
+	# ψ₀ = apply(projection, ψ₀; cutoff=cutoff)
+	# fidelity₀ = inner(ψ_T, ψ₀)
+	# ϕ_phase = angle(fidelity₀)
+	# ψ₀[1] = ψ₀[1] * exp(-im * ϕ_phase)
+	# fidelity₀_rotated = inner(ψ_T, ψ₀)	
 	
 
-	# Diagnostics: bond dimensions, overlaps, and per-plaquette ⟨Wp⟩.
-	result_proj = measure_plaquettes(ψ₀, sites; Ny = 4)
-	evals₀      = result_proj.wp
-	@printf "  bond dimensions     : %s\n" linkdims(ψ₀)
-	@printf "  ⟨ψ_T | ψ₀⟩          : %+.6f %+.6fi\n" real(fidelity₀)   imag(fidelity₀)
-	@printf "  ⟨ψ_T | ψ₀⟩ rotated  : %+.6f %+.6fi\n" real(fidelity₀_rotated) imag(fidelity₀_rotated)
-	println("⟨Wp⟩ on each hexagon:           ", evals₀)
+	# # Diagnostics: bond dimensions, overlaps, and per-plaquette ⟨Wp⟩.
+	# result_proj = measure_plaquettes(ψ₀, sites; Ny = 4)
+	# evals₀      = result_proj.wp
+	# @printf "  bond dimensions     : %s\n" linkdims(ψ₀)
+	# @printf "  ⟨ψ_T | ψ₀⟩          : %+.6f %+.6fi\n" real(fidelity₀)   imag(fidelity₀)
+	# @printf "  ⟨ψ_T | ψ₀⟩ rotated  : %+.6f %+.6fi\n" real(fidelity₀_rotated) imag(fidelity₀_rotated)
+	# println("⟨Wp⟩ on each hexagon:           ", evals₀)
 
 
 	
@@ -155,9 +158,10 @@ let
 	
 
 
-	"""
-		Optimize the parameters of all SU(4) gates in the circuit layer by layer
-	"""
+	# -----------------------------------------------------------------------------------------
+	# Optimize the parameters of single-qubit & Rzz(θ) gates in the circuit layer by layer
+	# -----------------------------------------------------------------------------------------
+
 	cost_function = zeros(Float64, nsweeps)
 	energy_trace = zeros(Float64, nsweeps)
 	optimization_trace = Float64[]
@@ -247,8 +251,6 @@ let
 				end
 				fidelity₁ = fidelity₂
 			end
-
-			# println("\n", repeat("-", 100))
 		end
 
 		# Compute the cost function after each sweep
@@ -267,16 +269,21 @@ let
 	# @show (optimization_trace - fidelity_trace)[1 : 20]
 
 
-	"""Save the optimization results in an HDF5 file for future analysis and visualization"""
+
+	
+	
+	# -----------------------------------------------------------------------------------------
+	# Save the optimization results in an HDF5 file for future analysis and visualization
+	# -----------------------------------------------------------------------------------------
+
 	output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(n_layers)_Rzz.h5"
 	h5open(output_filename, "w") do file
-		write(file, "cost function", cost_function)
-		write(file, "fidelity0", fidelity₀)
-		write(file, "Wp_0", evals₀)
-		write(file, "Wp_1", evals₁)
-		write(file, "Wp_2", evals₂)
-		write(file, "optimization trace", optimization_trace)
-		write(file, "fidelity trace", fidelity_trace)
+		write(file, "cost_function", cost_function)
+		write(file, "energy_trace", energy_trace)
+		write(file, "optimization_trace", optimization_trace)
+		write(file, "fidelity_trace", fidelity_trace)
+		# write(file, "fidelity0", fidelity₀)
+		# write(file, "Wp_0", evals₀)
 	end
 
 
@@ -319,10 +326,10 @@ let
 
 
 	# Save the expectation values of the plaquette operators in an HDF5 file
-	# h5open(output_filename, "r+") do file
-	# 	write(file, "Wp_opt", compiled.wp_opt)
-	# 	write(file, "Wp_target", target.wp_target)
-	# end
+	h5open(output_filename, "r+") do file
+		write(file, "Wp_opt", compiled.wp_opt)
+		write(file, "Wp_target", target.wp_target)
+	end
 
 
   return
