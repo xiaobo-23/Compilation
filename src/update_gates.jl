@@ -157,9 +157,9 @@ end
 
 # Define a function to update a single two-qubit gate using Evenbly-Vidal algorithm
 function update_Pauli(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor}, 
-  idx::Int64, idx₁::Int64, idx₂::Int64, input_sites, gate_name::String, input_cutoff::Float64 = 1e-10)
+    idx::Int64, idx₁::Int64, idx₂::Int64, input_sites, gate_name::String, input_cutoff::Float64 = 1e-10)
     
-
+    
     # Set up the gate set without the target gate	
     P = PAULI_PRODUCTS[gate_name]	
     target = gates_set[idx]

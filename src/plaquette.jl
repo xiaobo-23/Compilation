@@ -8,18 +8,18 @@ using ITensorMPS
 """
   hexagonal_plaquettes(N::Integer, width::Integer) -> Vector{Vector{Int}}
 
-  Return the six-site index lists for each hexagonal plaquette of a honeycomb
-  cylinder with circumference `width` and `N` total sites, in the brick-lattice
-  site labeling.
+Return the six-site index lists for each hexagonal plaquette of a honeycomb
+cylinder with circumference `width` and `N` total sites, in the brick-lattice
+site labeling.
 
-  Each plaquette is ordered `(a, b, c, d, e, f)` so that the standard Kitaev
-  plaquette operator reads `(iY)_a Z_b X_c X_d Z_e (iY)_f`.
+Each plaquette is ordered `(a, b, c, d, e, f)` so that the standard Kitaev
+plaquette operator reads `(iY)_a Z_b X_c X_d Z_e (iY)_f`.
 
-  # Examples
-  ```julia
-    plaquettes_w3 = hexagonal_plaquettes(24, 3)
-    plaquettes_w4 = hexagonal_plaquettes(66, 4)
-  ```
+# Examples
+```julia
+plaquettes_w3 = hexagonal_plaquettes(24, 3)
+plaquettes_w4 = hexagonal_plaquettes(66, 4)
+```
 """
 
 

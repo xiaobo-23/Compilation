@@ -196,18 +196,19 @@ then measure on the compiled MPS:
 
 Returns `(; ψ_opt, E_opt, var_opt, wp_opt, plaquettes)`.
 """
-function validate_circuit(circuit_gates, sites, state; 
+function validate_circuit(circuit_gates, ψ_initial::MPS; 
     Ny::Integer, Hamiltonian, cutoff::Real = 1e-10)
     
     # Apply the optimized circuit to the initial product state.
-    ψ_opt = MPS(sites, state)
+    ψ_opt = deepcopy(ψ_initial)
     for layer in circuit_gates
         ψ_opt = apply(layer, ψ_opt; cutoff)
     end
     normalize!(ψ_opt)
 
-
+    
     # Measure ⟨Wp⟩ on every plaquette on the compiled MPS
+    sites = siteinds(ψ_opt)
     plaquettes = hexagonal_plaquettes(length(sites), Ny)
     wp(ψ, p)   = -real(inner(ψ', plaquette_mpo(p, sites), ψ))
     wp_opt    = [wp(ψ_opt, p) for p in plaquettes]

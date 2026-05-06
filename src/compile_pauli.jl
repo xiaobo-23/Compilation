@@ -43,7 +43,7 @@ const base_block = [
     (gate = "Ryy", pairs = [[6,11], [12,17], [18,23]]),
 ]
 
-const n_repeats    = 2
+const n_repeats    = 1
 const input_layers = repeat(base_block, n_repeats)
 
 
@@ -91,53 +91,54 @@ let
 	# Project the initial MPS into the same topological sector as the target MPS
 	# by applying ∏ₚ (1 + Wₚ)/√2, then align the global phase.
 	# -----------------------------------------------------------------------------------------
-	# println(repeat("-", 100))
-	# println("Flux-sector projection of the initial MPS")
-	# println(repeat("-", 100))
+	println(repeat("-", 100))
+	println("Flux-sector projection of the initial MPS")
+	println(repeat("-", 100))
 	
 	
 	# Build one (1 + Wp)/√2 tensor per plaquette.
-	# indices = hexagonal_plaquettes(N, 4)
-	# projection = ITensor[]
-	# for p_sites in indices
-	# 	s = sites[p_sites]
+	indices = hexagonal_plaquettes(N, 3)
+	projection = ITensor[]
+	for p_sites in indices
+		s = sites[p_sites]
 		
-	# 	id_tensor = prod(op("Id", tmp_site) for tmp_site in s)
-	# 	pauli_tensor = op("Y", s[1]) * op("Z", s[2]) * op("X", s[3]) * op("X", s[4]) * op("Z", s[5]) * op("Y", s[6])
+		id_tensor = prod(op("Id", tmp_site) for tmp_site in s)
+		pauli_tensor = op("Y", s[1]) * op("Z", s[2]) * op("X", s[3]) * op("X", s[4]) * op("Z", s[5]) * op("Y", s[6])
 
-	# 	hj = (id_tensor + pauli_tensor) / sqrt(2)
-	# 	push!(projection, hj)
-	# end
+		hj = (id_tensor + pauli_tensor) / sqrt(2)
+		push!(projection, hj)
+	end
 
 	
-	# # Apply the projector and align the global phase to maximize Re⟨ψ_T | ψ₀⟩.
-	# ψ₀ = apply(projection, ψ₀; cutoff=cutoff)
-	# fidelity₀ = inner(ψ_T, ψ₀)
+	# Apply the projector to the initial product MPS, then compute the fidelity with the target MPS and the expectation values of the plaquette operators.
+	ψ₀ = apply(projection, ψ₀; cutoff=cutoff)
+	fidelity₀ = inner(ψ_T, ψ₀)
+	result_proj = measure_plaquettes(ψ₀, sites; Ny = 3)
+	evals₀      = result_proj.wp
+	@printf "  bond dimensions     : %s\n" linkdims(ψ₀)
+	@printf "  ⟨ψ_T | ψ₀⟩          : %+.6f %+.6fi\n" real(fidelity₀)   imag(fidelity₀)
+	println("⟨Wp⟩ on each hexagon:           ", evals₀)
+
+
+	# Align the global phase to maximize Re⟨ψ_T | ψ₀⟩.
 	# ϕ_phase = angle(fidelity₀)
 	# ψ₀[1] = ψ₀[1] * exp(-im * ϕ_phase)
 	# fidelity₀_rotated = inner(ψ_T, ψ₀)	
-	
-
-	# # Diagnostics: bond dimensions, overlaps, and per-plaquette ⟨Wp⟩.
-	# result_proj = measure_plaquettes(ψ₀, sites; Ny = 4)
-	# evals₀      = result_proj.wp
-	# @printf "  bond dimensions     : %s\n" linkdims(ψ₀)
-	# @printf "  ⟨ψ_T | ψ₀⟩          : %+.6f %+.6fi\n" real(fidelity₀)   imag(fidelity₀)
 	# @printf "  ⟨ψ_T | ψ₀⟩ rotated  : %+.6f %+.6fi\n" real(fidelity₀_rotated) imag(fidelity₀_rotated)
-	# println("⟨Wp⟩ on each hexagon:           ", evals₀)
-
-
+	
+	
 	
 	# -----------------------------------------------------------------------------------------
 	# Build the variational brickwall ansatz used to compile the target MPS.
 	# -----------------------------------------------------------------------------------------
-	# Randomly initialize the mixed single- and two-qubit gates in each layer.
+	# Randomly initialize two-qubit gates in the circuit that implements the free fermion approach to the Kitaev model
 	circuit_gates = pauli_gates_multi_layers(input_layers, sites)
 	
-	# Check the consistency between the number of layers of gates and the number of layers of input pairs
-	@assert length(circuit_gates) == length(input_layers) """
-		Layer-count mismatch: got $(length(circuit_gates)) layers of gates for $(length(input_pairs)) layer specs. 
-	""" 
+	
+	# Check the consistency between the number of layers of gates and the number of layers of integer pairs in the input specification.
+	# @assert length(circuit_gates) == length(input_layers) """
+	# 	Layer-count mismatch: got $(length(circuit_gates)) layers of gates for $(length(input_layers)) layer specs. 
+	# """ 
 	
 
 
@@ -234,12 +235,13 @@ let
 
 
 		# Compute the cost function after each sweep
-		cost_function[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
-		en = validate_circuit(circuit_gates, sites, state; Ny = model.Ny, Hamiltonian = H, cutoff=1e-10)
+		cost_function[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, 1e-10)
+		en = validate_circuit(circuit_gates, ψ₀; Ny = model.Ny, Hamiltonian = H, cutoff=1e-10)
 		energy_trace[iteration] = en.E_opt
 		plaquette_trace[iteration, :] = en.wp_opt
 		
 		println("\n")
+		@show en.wp_opt
 		@printf "──── sweep %d/%d done  Fidelity = %+.6f  Energy = %+.6f\n" iteration nsweeps cost_function[iteration] en.E_opt
 		println(repeat("-", 100), "\n")
 	end
@@ -272,8 +274,8 @@ let
 	# the hexagonal plaquette operators on both the compiled MPS and the target MPS, 
 	# and report the optimization history.
 	# -----------------------------------------------------------------------------------------
-	compiled = validate_circuit(circuit_gates, sites, state; Ny = model.Ny, Hamiltonian = H, cutoff = cutoff)
-	target   = validate_reference(ψ_T;                       Ny = model.Ny, Hamiltonian = H)
+	compiled = validate_circuit(circuit_gates, ψ₀; Ny = model.Ny, Hamiltonian = H, cutoff = cutoff)
+	target   = validate_reference(ψ_T;             Ny = model.Ny, Hamiltonian = H)
 
 
 	# Cross-check vs the DMRG ground-state energy stored alongside ψ_T.
@@ -300,7 +302,7 @@ let
 
 
 
-	# # Save the expectation values of the plaquette operators in an HDF5 file
+	# Save the expectation values of the plaquette operators in an HDF5 file
 	# h5open(output_filename, "r+") do file
 	# 	write(file, "Wp_opt", compiled.wp_opt)
 	# 	write(file, "Wp_target", target.wp_target)
