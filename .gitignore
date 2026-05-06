@@ -1,0 +1,29 @@
+# ── macOS / system cruft ─────────────────────────────────────────────────
+.DS_Store
+
+# ── Jupyter ──────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+.virtual_documents/
+*.ipynb
+
+# ── Claude Code (sessions, worktrees, agent state) ───────────────────────
+.claude/
+
+# ── Generated data ───────────────────────────────────────────────────────
+data/
+*.h5
+
+# ── Generated figures & binary assets ────────────────────────────────────
+figures/
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.key
+
+# ── Typst sources ────────────────────────────────────────────────────────
+*.typ
+
+# ── Personal notes & paper drafts ────────────────────────────────────────
+notes/
+arXiv/
