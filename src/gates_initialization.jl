@@ -20,7 +20,6 @@ using Printf
 # end
 
 
-
 # Function to generate a single-layer of two-qubit gates using the Heisenberg interaction
 function heisenberg_gates_single_layer(input_pairs::Vector{Vector{Int64}}, 
   J::Float64, Δτ::Float64, input_sites)
@@ -76,6 +75,7 @@ function random_gates_single_layer(input_pairs::Vector{Vector{Int64}}, input_sit
 
   return gates
 end 
+
 
 
 # Function to generate multi-layers of random SU(4) gates as the initial unitaries
@@ -145,43 +145,6 @@ function single_layer_mixed_Rzz(input_pairs::Vector{Vector{Int64}}, input_sites)
 		elseif length(pair) == 2
 			ϕ = π/2 * rand()
 			G_random = op(input_sites, "Rzz", pair[1], pair[2]; ϕ=ϕ)
-			# @show G_random
-
-
-			# """Check the exponent convention of the Rzz gate in ITensorMPS.jl"""
-			# i₁, i₂ = input_sites[pair[1]], input_sites[pair[2]]
-			# ϕ_test = 0.3
-			# G_random = op(input_sites, "Rzz", pair[1], pair[2]; ϕ=ϕ_test)
-			# @show inds(G_random)
-			# @show i₁, i₂
-
-			# rows, cols = combiner(i₁, i₂), combiner(i₁', i₂')
-			# G_random_matrix = matrix(rows * G_random * cols, combinedind(rows), combinedind(cols))
-			# show(IOContext(stdout, :limit=>false), "text/plain", G_random_matrix)
-			# println()
-
-			# expected_factor1 = Diagonal([exp(-im*ϕ_test*z) for z in [1, -1, -1, 1]])
-			# expected_factor2 = Diagonal([exp(-im*ϕ_test*z/2) for z in [1, -1, -1, 1]])
-
-			# show(IOContext(stdout, :limit=>false), "text/plain", expected_factor1)
-			# println()
-
-			# @show isapprox(G_random_matrix, expected_factor1; atol=1e-10)  
-			# @show isapprox(G_random_matrix, expected_factor2; atol=1e-10)
-
-
-			# """Check the ordering of basis states"""
-			# ZI = op("Z", i₁) * op("I", i₂)
-			# rows = combiner(i₂, i₁)
-			# cols = combiner(i₂', i₁')
-			# ZI_matrix = matrix(rows * ZI * cols, combinedind(rows), combinedind(cols))
-			# show(IOContext(stdout, :limit=>false), "text/plain", ZI_matrix)
-			# println()
-
-
-			# """Set up the Rzz gate using custom constructor"""
-			# G_random_custom = op("RzzCustom", input_sites, idx₁, idx₂; θ=ϕ)
-			# @show G_random_custom
 		end
 
 		push!(gates, G_random)
@@ -189,21 +152,6 @@ function single_layer_mixed_Rzz(input_pairs::Vector{Vector{Int64}}, input_sites)
 
 	return gates
 end 
-
-
-
-# Function to generate multi-layers mixed single-qubit & SU(4) gates as the initial unitaries
-# function multi_layers_mixed(pairs_array::Vector{Vector{Vector{Int64}}}, input_sites)
-# 	circuit_depth = length(pairs_array)
-# 	output_gates = []
-
-# 	for idx in 1 : circuit_depth
-# 		gates_layer = single_layer_mixed(pairs_array[idx], input_sites)
-# 		push!(output_gates, gates_layer)
-# 	end
-
-# 	return output_gates
-# end
 
 
 
@@ -221,15 +169,28 @@ function multi_layers_mixed_Rzz(pairs_array::Vector{Vector{Vector{Int64}}}, inpu
 end
 
 
+"""
+    pauli_gates_single_layer(spec::NamedTuple, sites; ϕ_init = () -> π/2 * rand())
 
-# Function to generate multi-layers mixed single-qubit & SU(4) gates as the initial unitaries
-# function multi_layers_mixed(pairs_array::Vector{Vector{Vector{Int64}}}, input_sites)
-# 	return [single_layer_mixed(pairs, input_sites) for pairs in pairs_array]
-# end
+Build one layer of Pauli two-qubit gates from a `(gate, pairs)` NamedTuple.
+`spec.gate` is one of "Rxx", "Ryy", "Rzz"; each pair `[i, j]` becomes a single
+two-qubit gate of that flavor with initial angle `ϕ_init()`.
+"""
+function pauli_gates_single_layer(spec::NamedTuple, sites; ϕ_init = () -> π/2 * rand())
+    gates = ITensor[]
+    for pair in spec.pairs
+        G = op(sites, spec.gate, pair[1], pair[2]; ϕ = ϕ_init())
+        push!(gates, G)
+    end
+    return gates
+end
 
 
+"""
+    pauli_gates_multi_layers(input_layers, sites; ϕ_init = () -> π/2 * rand())
 
-# Function to generate multi-layers mixed single-qubit & Rzz gates as the initial unitaries
-# function multi_layers_mixed_Rzz(pairs_array::Vector{Vector{Vector{Int64}}}, input_sites)
-# 	return [single_layer_mixed_Rzz(pairs, input_sites) for pairs in pairs_array]
-# end
+Build the full layered circuit from a vector of `(gate, pairs)` specs.
+"""
+function pauli_gates_multi_layers(input_layers, sites; ϕ_init = () -> π/2 * rand())
+    return [pauli_gates_single_layer(spec, sites; ϕ_init) for spec in input_layers]
+end

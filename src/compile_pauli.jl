@@ -26,9 +26,25 @@ println("")
 const model = (; Nx = 8, Ny = 3, Jx = 1.0, Jy = 1.0, Jz = 1.0, κ = -0.4, yperiodic = true)
 const N = model.Nx * model.Ny            # Total number of qubits
 const cutoff = 1e-4
-const nsweeps = 10
+const nsweeps = 2
 const default_iters = 25                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
 const stop_criteria = 1e-4               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
+
+
+
+# Base block: 6 layers, Kitaev cylinder bond pattern (Nx=8, Ny=3 → N=24)
+const base_block = [
+    (gate = "Rxx", pairs = [[1,2], [3,4], [5,6], [7,8], [9,10], [11,12],
+                            [13,14], [15,16], [17,18], [19,20], [21,22], [23,24]]),
+    (gate = "Rzz", pairs = [[2,3], [4,5], [8,9], [10,11], [14,15], [16,17], [20,21], [22,23]]),
+    (gate = "Rzz", pairs = [[1,6], [7,12], [13,18], [19,24]]),
+    (gate = "Ryy", pairs = [[2,7], [8,13], [14,19]]),
+    (gate = "Ryy", pairs = [[4,9], [10,15], [16,21]]),
+    (gate = "Ryy", pairs = [[6,11], [12,17], [18,23]]),
+]
+
+const n_repeats    = 2
+const input_layers = repeat(base_block, n_repeats)
 
 
 let
@@ -114,32 +130,12 @@ let
 	
 	# -----------------------------------------------------------------------------------------
 	# Build the variational brickwall ansatz used to compile the target MPS.
-	#
-	# Each repeating block has four sublayers:
-	#   1. single-qubit gates on all sites
-	#   2. two-qubit gates on odd bonds  (i, i+1), i = 1, 3, 5, …
-	#   3. single-qubit gates on interior sites 2:N-1
-	#   4. two-qubit gates on even bonds (i, i+1), i = 2, 4, 6, …
-	# The block is repeated `n_layers` times and capped with a final
-	# single-qubit layer on every site.
 	# -----------------------------------------------------------------------------------------
-	# Configure the brickwall gate pattern by defining qubit indices
-	n_layers = 6
-	brickwall_block = [
-		[[i] for i in 1 : N],
-		[[i, i + 1] for i in 1 : 2 : N - 1],
-		[[i] for i in 2 : N - 1],
-		[[i, i + 1] for i in 2 : 2 : N - 1],
-	]
-	input_pairs = repeat(brickwall_block, n_layers)	
-	push!(input_pairs, [[i] for i in 1 : N])
-
-	
 	# Randomly initialize the mixed single- and two-qubit gates in each layer.
-	circuit_gates = multi_layers_mixed_Rzz(input_pairs, sites)
+	circuit_gates = pauli_gates_multi_layers(input_layers, sites)
 	
 	# Check the consistency between the number of layers of gates and the number of layers of input pairs
-	@assert length(circuit_gates) == length(input_pairs) """
+	@assert length(circuit_gates) == length(input_layers) """
 		Layer-count mismatch: got $(length(circuit_gates)) layers of gates for $(length(input_pairs)) layer specs. 
 	""" 
 	
@@ -161,9 +157,9 @@ let
         println("\n")
 
 		# Optimize each layer of the two-qubit gate in a forward sweeping order 
-		for layer_idx in 1 : length(circuit_gates)
+		for layer_idx in eachindex(input_layers)
+			spec = input_layers[layer_idx]
 			optimization_gates = circuit_gates[layer_idx]
-			idx_pairs = input_pairs[layer_idx]
 
 			
 			# Compress the optimization circuit from the initial MPS side
@@ -199,12 +195,12 @@ let
 				# Update all gates from top to bottom
 				# println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: top-down sweeping")
 
-				for idx in 1:length(idx_pairs)
-					updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
-						update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
-					else
-						update_Rzz(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], idx_pairs[idx][2], sites, cutoff)
-					end
+				for idx in eachindex(spec.pairs)
+					idx₁, idx₂ = spec.pairs[idx][1], spec.pairs[idx][2]
+					updated_gate, tmp_trace, tmp_cost = update_Pauli(
+						ψ_left, ψ_right, optimization_gates,
+						idx, idx₁, idx₂, sites, spec.gate, cutoff,
+					)
 					optimization_gates[idx] = updated_gate
 					append!(optimization_trace, tmp_trace)
 					append!(fidelity_trace, tmp_cost)
@@ -214,13 +210,12 @@ let
 
 				# Update all gates from bottom to top
 				# println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: bottom-up sweeping")
-				for idx in length(idx_pairs):-1:1
-					updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
-						update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
-					else
-						idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
-						update_Rzz(ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, sites, cutoff)
-					end
+				for idx in length(spec.pairs):-1:1
+					idx₁, idx₂ = spec.pairs[idx][1], spec.pairs[idx][2]
+					updated_gate, tmp_trace, tmp_cost = update_Pauli(
+						ψ_left, ψ_right, optimization_gates,
+						idx, idx₁, idx₂, sites, spec.gate, cutoff,
+					)
 					optimization_gates[idx] = updated_gate
 					append!(optimization_trace, tmp_trace)
 					append!(fidelity_trace, tmp_cost)
@@ -259,7 +254,7 @@ let
 	# # -----------------------------------------------------------------------------------------
 	# # Save the optimization results in an HDF5 file for future analysis and visualization
 	# # -----------------------------------------------------------------------------------------
-	# output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(n_layers)_Rzz.h5"
+	# output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(n_repeat)_Pauli.h5"
 	# h5open(output_filename, "w") do file
 	# 	write(file, "cost_function", cost_function)
 	# 	write(file, "energy_trace", energy_trace)

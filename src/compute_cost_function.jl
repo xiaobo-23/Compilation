@@ -36,16 +36,53 @@ function compute_cost_function(psi_ket::MPS, psi_bra::MPS, input_gates::Vector{I
 end
 
 
-# Define the function to compute the cost function using two matrix product states
-# and multiple layers of two-qubit gates as input
-function compute_cost_function_multi_layers(psi_ket::MPS, psi_bra::MPS, input_gates::Vector{Any}, 
-  input_cutoff::Float64 = 1e-14)
+# # Define the function to compute the cost function using two matrix product states
+# # and multiple layers of two-qubit gates as input
+# function compute_cost_function_multi_layers(psi_ket::MPS, psi_bra::MPS, input_gates::Vector{Any}, 
+#   input_cutoff::Float64 = 1e-14)
 
-  circuit_depth = length(input_gates)
-  for idx in 1 : circuit_depth
-    psi_ket = apply(input_gates[idx], psi_ket; cutoff=input_cutoff)
-  end
-  normalize!(psi_ket)
+#   circuit_depth = length(input_gates)
+#   for idx in 1 : circuit_depth
+#     psi_ket = apply(input_gates[idx], psi_ket; cutoff=input_cutoff)
+#   end
+#   normalize!(psi_ket)
 
-  return real(inner(psi_bra, psi_ket))
+#   return real(inner(psi_bra, psi_ket))
+# end
+
+
+# ── Multi-layer cost ────────────────────────────────────────────────────────
+# Two methods (one for the legacy `Vector{Any}` callers, one for the
+# type-clean `Vector{Vector{ITensor}}` callers) sharing a single body.
+# Once the legacy callers are migrated, replace both with the one definition
+# in `_compute_cost_function_multi_layers_impl`.
+
+function _compute_cost_function_multi_layers_impl(psi_ket::MPS, psi_bra::MPS,
+                                                  input_gates,
+                                                  input_cutoff::Float64)
+    for layer in input_gates
+        psi_ket = apply(layer, psi_ket; cutoff = input_cutoff)
+    end
+    normalize!(psi_ket)
+    return real(inner(psi_bra, psi_ket))
+end
+
+
+# Legacy: `Vector{Any}` containing `Vector{ITensor}` layers.
+# Used by compile_su4.jl, compile_rzz.jl.
+function compute_cost_function_multi_layers(psi_ket::MPS, psi_bra::MPS,
+                                            input_gates::Vector{Any},
+                                            input_cutoff::Float64 = 1e-14)
+    return _compute_cost_function_multi_layers_impl(psi_ket, psi_bra,
+                                                    input_gates, input_cutoff)
+end
+
+
+# Type-clean: `Vector{Vector{ITensor}}`.
+# Used by compile_pauli.jl.
+function compute_cost_function_multi_layers(psi_ket::MPS, psi_bra::MPS,
+                                            input_gates::Vector{Vector{ITensor}},
+                                            input_cutoff::Float64 = 1e-14)
+    return _compute_cost_function_multi_layers_impl(psi_ket, psi_bra,
+                                                    input_gates, input_cutoff)
 end

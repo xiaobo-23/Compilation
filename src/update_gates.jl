@@ -60,15 +60,15 @@ function update_single_gate(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITenso
 
 
     # Compute the environment tensor T for the target two-qubit gate from scratch
-    T = ITensor(1)
     psi_intermediate_copy = orthogonalize(psi_intermediate, length(psi_intermediate))
     psi_bra_copy = orthogonalize(psi_bra, length(psi_bra))
     
-    for j in 1:length(psi_intermediate_copy)
+
+    T = ITensor(1)
+    for j in eachindex(psi_intermediate_copy)
       T *= psi_intermediate_copy[j] 
       T *= dag(psi_bra_copy[j])
     end
-    # @show inds(T)
     noprime!(psi_bra)
    
     
@@ -76,7 +76,7 @@ function update_single_gate(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITenso
     trace = real((T * target)[1])
     cost = compute_cost_function(psi_ket, psi_bra, gates_set, input_cutoff)
     # @show trace, cost 
-    println("")
+    # println("")
 
     
     # Perform SVD (USV†) on the environment tensors 
@@ -205,7 +205,6 @@ function update_Pauli(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
     # @show trace, cost 
 
 
-
 	# Compute the product of the target gate with its environment tensor & compute the cost function before updating the target gate 
 	C_row = combiner(i₂, i₁)
 	C_col = combiner(j₂, j₁)
@@ -218,10 +217,7 @@ function update_Pauli(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
 	coeff_B = real(tr(matrix_T))
 	θ₁ = atan(coeff_A, coeff_B)
 	θ₂ = θ₁ + π
-	# @show coeff_A, coeff_B, coeff_A/coeff_B, θ₁, θ₂
-	# println()
-
-
+	
 
 	# Update the target gate using native gate constructor in ITensorMPS.jl
 	updated_T1 = op(input_sites, gate_name, idx₁, idx₂; ϕ=θ₁)
