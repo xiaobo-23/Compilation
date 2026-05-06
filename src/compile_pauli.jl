@@ -2,13 +2,11 @@
 # Compiling the Kitaev model on the interferometer geometry
 # Optimize parameters of single-qubit gates and two-qubit Rzz gates
 
-
 using ITensors, ITensorMPS
 using LinearAlgebra, MKL
 using HDF5
 using Random
 using Printf
-
 
 
 include("compute_cost_function.jl")
@@ -18,19 +16,17 @@ include("plaquette.jl")
 include("validation.jl")
 
 
-
 # ─── Set up parameters for multithreading and parallelization ────────────
 BLAS.set_num_threads(8)
 @info "BLAS configuration" vendor=BLAS.vendor() config=BLAS.get_config() threads=BLAS.get_num_threads()
-println()
-
+println("")
 
 
 # ─── Compilation parameters ──────────────────────────────────────────────
 const model = (; Nx = 8, Ny = 3, Jx = 1.0, Jy = 1.0, Jz = 1.0, κ = -0.4, yperiodic = true)
 const N = model.Nx * model.Ny            # Total number of qubits
 const cutoff = 1e-4
-const nsweeps = 2
+const nsweeps = 20
 const default_iters = 25                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
 const stop_criteria = 1e-4               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
 
@@ -128,7 +124,7 @@ let
 	# single-qubit layer on every site.
 	# -----------------------------------------------------------------------------------------
 	# Configure the brickwall gate pattern by defining qubit indices
-	n_layers = 2
+	n_layers = 6
 	brickwall_block = [
 		[[i] for i in 1 : N],
 		[[i, i + 1] for i in 1 : 2 : N - 1],
@@ -147,6 +143,7 @@ let
 		Layer-count mismatch: got $(length(circuit_gates)) layers of gates for $(length(input_pairs)) layer specs. 
 	""" 
 	
+
 
 	# -----------------------------------------------------------------------------------------
 	# Optimize the parameters of single-qubit & Rzz(θ) gates in the circuit layer by layer
@@ -259,9 +256,9 @@ let
 
 
 
-	# -----------------------------------------------------------------------------------------
-	# Save the optimization results in an HDF5 file for future analysis and visualization
-	# -----------------------------------------------------------------------------------------
+	# # -----------------------------------------------------------------------------------------
+	# # Save the optimization results in an HDF5 file for future analysis and visualization
+	# # -----------------------------------------------------------------------------------------
 	# output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(n_layers)_Rzz.h5"
 	# h5open(output_filename, "w") do file
 	# 	write(file, "cost_function", cost_function)
@@ -272,6 +269,7 @@ let
 	# 	# write(file, "fidelity0", fidelity₀)
 	# 	# write(file, "Wp_0", evals₀)
 	# end
+
 
 
 	# -----------------------------------------------------------------------------------------
@@ -312,7 +310,6 @@ let
 	# 	write(file, "Wp_opt", compiled.wp_opt)
 	# 	write(file, "Wp_target", target.wp_target)
 	# end
-
 
   return
 end
