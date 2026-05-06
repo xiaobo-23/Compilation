@@ -25,41 +25,6 @@ function plaquette_mpo(p_sites, sites)
 end
 
 
-"""
-    validate_plaquettes(circuit_gates, sites, state, ψ_T; width = 4, cutoff = 1e-10) -> NamedTuple
-
-Apply `circuit_gates` to the product state defined by `state` on `sites`
-and return the plaquette expectation values ⟨Wp⟩ on both the compiled and
-target MPS for a width-`width` honeycomb cylinder.
-
-In the Kitaev spin-liquid ground state every ⟨Wp⟩ = +1, so closeness of
-`wp_opt` to `+1` is the local flux-sector check that should pass even at
-moderate global fidelity.
-
-Returns `(; ψ_opt, wp_opt, wp_target, plaquettes)`.
-"""
-
-function validate_plaquettes(circuit_gates, sites, state, ψ_T; 
-        width::Integer = 4, cutoff::Real = 1e-10)
-    
-    # Apply the optimized circuit to the initial product state.
-    ψ_opt = MPS(sites, state)
-    for layer in circuit_gates
-        ψ_opt = apply(layer, ψ_opt; cutoff)
-    end
-    normalize!(ψ_opt)
-
-    # Measure ⟨Wp⟩ on every plaquette, on both states.
-    plaquettes = hexagonal_plaquettes(length(sites), width)
-    wp(ψ, p)   = -real(inner(ψ', plaquette_mpo(p, sites), ψ))
-
-    wp_opt    = [wp(ψ_opt, p) for p in plaquettes]
-    wp_target = [wp(ψ_T,   p) for p in plaquettes]
-
-    return (; ψ_opt, wp_opt, wp_target, plaquettes)
-end
-
-
 
 """
     measure_plaquettes(ψ::MPS, sites; width = 4) -> NamedTuple
@@ -78,7 +43,6 @@ function measure_plaquettes(ψ::MPS, sites; width::Integer = 4)
     wp = [-real(inner(ψ', plaquette_mpo(p, sites), ψ)) for p in plaquettes]
     return (; wp, plaquettes)
 end
-
 
 
 
@@ -216,4 +180,80 @@ function measure_energy(ψ::MPS, H::MPO)
     E  = real(inner(ψ', H, ψ))
     H2 = real(inner(H, ψ, H, ψ))
     return (; E, variance = H2 - E^2)
+end
+
+
+
+"""
+    validate_circuit(circuit_gates, sites, state; 
+        length::Integer = 6, width::Integer = 4, input_Jx::Real = 1.0, input_Jy::Real = 1.0, input_Jz::Real = 1.0,
+        input_κ::Real = -0.4, cutoff::Real = 1e-10) -> NamedTuple
+
+Apply `circuit_gates` to the product state defined by `state` on `sites`
+and return the plaquette expectation values ⟨Wp⟩ on the compiled MPS and the energy and 
+variance of the compiled state.
+
+In the Kitaev spin-liquid ground state every ⟨Wp⟩ = +1, so closeness of
+`wp_opt` to `+1` is the local flux-sector check that should pass even at
+moderate global fidelity.
+
+Returns `(; ψ_opt, E_opt, var_opt, wp_opt, plaquettes)`.
+"""
+
+function validate_circuit(circuit_gates, sites, state; 
+        length::Integer = 6, width::Integer = 4, input_Jx::Real = 1.0, input_Jy::Real = 1.0, input_Jz::Real = 1.0,
+        input_κ::Real = -0.4, cutoff::Real = 1e-10)
+    
+    # Apply the optimized circuit to the initial product state.
+    ψ_opt = MPS(sites, state)
+    for layer in circuit_gates
+        ψ_opt = apply(layer, ψ_opt; cutoff)
+    end
+    normalize!(ψ_opt)
+
+    # Measure ⟨Wp⟩ on every plaquette, on both states.
+    plaquettes = hexagonal_plaquettes(length(sites), width)
+    wp(ψ, p)   = -real(inner(ψ', plaquette_mpo(p, sites), ψ))
+
+    wp_opt    = [wp(ψ_opt, p) for p in plaquettes]
+    Hamiltonian = energy_mpo(sites; Nx = length, Ny = width, Jx = input_Jx, Jy = input_Jy, Jz = input_Jz, κ = input_κ)
+    E_opt, var_opt = measure_energy(ψ_opt, Hamiltonian)
+
+    return (; ψ_opt, E_opt, var_opt, wp_opt, plaquettes)
+end
+
+
+
+"""
+    validate_reference(ψ_T; 
+        length::Integer = 6, width::Integer = 4, input_Jx::Real = 1.0, input_Jy::Real = 1.0, input_Jz::Real = 1.0,
+        input_κ::Real = -0.4, cutoff::Real = 1e-10) -> NamedTuple
+
+Return the plaquette expectation values ⟨Wp⟩ on the reference MPS and the energy and 
+variance of the reference state.
+
+In the Kitaev spin-liquid ground state every ⟨Wp⟩ = +1, so closeness of
+`wp_target` to `+1` is the local flux-sector check that should pass even at
+moderate global fidelity.
+
+Returns `(; E_opt, var_opt, wp_target, plaquettes)`.
+"""
+
+function validate_reference(ψ_T; 
+        length::Integer = 6, width::Integer = 4, input_Jx::Real = 1.0, input_Jy::Real = 1.0, input_Jz::Real = 1.0,
+        input_κ::Real = -0.4, cutoff::Real = 1e-10)
+    
+    tmp_sites = siteinds(ψ_T)
+        
+
+    # Measure ⟨Wp⟩ on every plaquette, on both states.
+    plaquettes = hexagonal_plaquettes(length(tmp_sites), width)
+    wp(ψ, p)   = -real(inner(ψ', plaquette_mpo(p, tmp_sites), ψ))
+    wp_target = [wp(ψ_T,   p) for p in plaquettes]
+
+
+    Hamiltonian = energy_mpo(tmp_sites; Nx = length, Ny = width, Jx = input_Jx, Jy = input_Jy, Jz = input_Jz, κ = input_κ)
+    E_opt, var_opt = measure_energy(ψ_T, Hamiltonian)
+
+    return (; E_opt, var_opt, wp_target, plaquettes)
 end
