@@ -12,9 +12,15 @@ using Printf
 include("compute_cost_function.jl")
 
 
-PauliZ = [1  0; 0  -1]
-KroneckerZ = kron(PauliZ, PauliZ)
-# display(KroneckerZ)
+const PauliX = ComplexF64[0  1;  1  0]
+const PauliY = ComplexF64[0 -im; im  0]
+const PauliZ = ComplexF64[1  0;  0 -1]
+
+const PAULI_PRODUCTS = Dict{String, Matrix{ComplexF64}}(
+    "Rxx" => kron(PauliX, PauliX),
+    "Ryy" => kron(PauliY, PauliY),
+    "Rzz" => kron(PauliZ, PauliZ),
+)
 
 
 # Define a function to update a single two-qubit gate using Evenbly-Vidal algorithm
@@ -159,11 +165,12 @@ end
 
 
 
-
 # Define a function to update a single two-qubit gate using Evenbly-Vidal algorithm
-function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor}, 
-  idx::Int64, idx₁::Int64, idx₂::Int64, input_sites, input_cutoff::Float64 = 1e-10)
+function update_Pauli(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor}, 
+  idx::Int64, idx₁::Int64, idx₂::Int64, input_sites, gate_name::String, input_cutoff::Float64 = 1e-10)
     
+	P  = PAULI_PRODUCTS[gate_name]	
+
     # Set up the gate set without the target gate
     gates_copy = deepcopy(gates_set)
     target = gates_copy[idx]
@@ -172,16 +179,16 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
     # Remove the target gate from the set of gates and check whether it is removed properly
     deleteat!(gates_copy, idx)
     if target in gates_copy
-      error("The gate to be optimized is still in the temporary gate set!")
+    	error("The gate to be optimized is still in the temporary gate set!")
     end
     
 
     # Apply the gate set without the target gate to the initial MPS
     if length(gates_copy) != 0
-      psi_intermediate = apply(gates_copy, psi_ket; cutoff=input_cutoff)
-      normalize!(psi_intermediate)
+		psi_intermediate = apply(gates_copy, psi_ket; cutoff=input_cutoff)
+		normalize!(psi_intermediate)
     else
-      psi_intermediate = deepcopy(psi_ket)
+		psi_intermediate = deepcopy(psi_ket)
     end
 
   
@@ -194,16 +201,15 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
     # println()
 
 
-    # Compute the environment tensor T for the target two-qubit gate from scratch
-    E_T = ITensor(1)
+    # Compute the environment tensor T for the target gate from scratch
     psi_intermediate_copy = orthogonalize(psi_intermediate, length(psi_intermediate))
     psi_bra_copy = orthogonalize(psi_bra, length(psi_bra))
     
-    for j in 1:length(psi_intermediate_copy)
-      E_T *= psi_intermediate_copy[j] 
-      E_T *= dag(psi_bra_copy[j])
+    E_T = ITensor(1)
+    for j in eachindex(psi_intermediate_copy)
+        E_T *= psi_intermediate_copy[j] 
+        E_T *= dag(psi_bra_copy[j])
     end
-    # @show inds(E_T)
     noprime!(psi_bra)
    
 
@@ -212,16 +218,16 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
     # @show trace, cost 
 
 
+    
 	# Compute the product of the target gate with its environment tensor & compute the cost function before updating the target gate 
 	C_row = combiner(i₂, i₁)
 	C_col = combiner(j₂, j₁)
 	matrix_T = matrix(C_row * E_T * C_col, combinedind(C_row), combinedind(C_col))
-	# show(IOContext(stdout, :limit=>false), "text/plain", matrix_T)
-	# println()
-
 	
-	# Update the input angle based on the coefficients; one of them should give the maximum value and the other gives the minimum value
-	coeff_A = imag(sum(matrix_T .* KroneckerZ))
+	
+	# Update the input angle based on the coefficients 
+	# One of them should give the maximum value and the other gives the minimum value
+	coeff_A = imag(tr(matrix_T * P))
 	coeff_B = real(tr(matrix_T))
 	θ₁ = atan(coeff_A, coeff_B)
 	θ₂ = θ₁ + π
@@ -229,29 +235,10 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
 	# println()
 
 
-	# For debugging: search for the optimal angle by brute-force way in the range of [-2π, 2π] and check whether the optimal angle obtained from the coefficients is correct
-	Fidelity_values = []
-	for θ in range(-2π, 2π; length = 1000)
-		updated_T = op(input_sites, "Rzz", idx₁, idx₂; ϕ=θ)
-		push!(Fidelity_values, real((E_T * updated_T)[1]))
-	end
-	# @show Fidelity_values	
-	# @show maximum(Fidelity_values)
 
-	
-	# For Dubugging: search for the optimal angle by computing the cost function in a different way
-	F_values = []
-	for θ in range(-2π, 2π; length = 1000)
-		tmp = coeff_B * cos(θ) + coeff_A * sin(θ)
-		push!(F_values, tmp)
-	end
-	# @show F_values
-	# @show maximum(F_values)
-
-
-	# Update the target Rzz gate using native Rzz gate constructor in ITensorMPS.jl
-	updated_T1 = op(input_sites, "Rzz", idx₁, idx₂; ϕ=θ₁)
-	updated_T2 = op(input_sites, "Rzz", idx₁, idx₂; ϕ=θ₂)
+	# Update the target gate using native gate constructor in ITensorMPS.jl
+	updated_T1 = op(input_sites, gate_name, idx₁, idx₂; ϕ=θ₁)
+	updated_T2 = op(input_sites, gate_name, idx₁, idx₂; ϕ=θ₂)
 
 
 	if real((E_T * updated_T1)[1]) > real((E_T * updated_T2)[1])
@@ -260,23 +247,35 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
 		updated_T = updated_T2
 	end
 	# @show real((E_T * updated_T)[1]), real((E_T * updated_T1)[1]), real((E_T * updated_T2)[1])
-	# println()
-
-
-	
-	# Double check the optimal angle by computing the cost function after updating the target Rzz gate
-	# F₁ = coeff_B * cos(θ₁) + coeff_A * sin(θ₁)
-	# F₂ = coeff_B * cos(θ₂) + coeff_A * sin(θ₂)
-	# @show F₁, real((E_T * updated_T1)[1])
-	# @show F₂, real((E_T * updated_T2)[1])
-
-
-	# @show inds(updated_T1)
-	# @show inds(updated_T2)
-	# @show j₁, j₂, i₁, i₂
 	# println("")
 
 
-    # Return the updated Rzz gate, the trace of the product of the target gate and environment tensor and the cost function
+    # Return the updated gate, the trace of the product of the target gate and environment tensor and the cost function
     return updated_T, trace, cost
+end
+
+
+
+# Define a wrapper function to update a single Rzz gate
+function update_Rzz(
+    psi_ket::MPS,
+    psi_bra::MPS,
+    gates_set::Vector{ITensor},
+    idx::Int64,
+    idx₁::Int64,
+    idx₂::Int64,
+    input_sites,
+    input_cutoff::Float64 = 1e-10,
+)
+    return update_Pauli(
+        psi_ket,
+        psi_bra,
+        gates_set,
+        idx,
+        idx₁,
+        idx₂,
+        input_sites,
+        "Rzz",
+        input_cutoff,
+    )
 end

@@ -4,9 +4,11 @@
 
 
 using ITensors, ITensorMPS
-using Random
 using LinearAlgebra, MKL
+using HDF5
+using Random
 using Printf
+
 
 
 include("compute_cost_function.jl")
@@ -17,7 +19,7 @@ include("validation.jl")
 
 
 
-# Set up parameters for multithreading and parallelization
+# ─── Set up parameters for multithreading and parallelization ────────────
 BLAS.set_num_threads(8)
 @info "BLAS configuration" vendor=BLAS.vendor() config=BLAS.get_config() threads=BLAS.get_num_threads()
 println()
@@ -31,7 +33,6 @@ const cutoff = 1e-4
 const nsweeps = 2
 const default_iters = 25                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
 const stop_criteria = 1e-4               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
-
 
 
 let
@@ -126,7 +127,6 @@ let
 	# The block is repeated `n_layers` times and capped with a final
 	# single-qubit layer on every site.
 	# -----------------------------------------------------------------------------------------
-
 	# Configure the brickwall gate pattern by defining qubit indices
 	n_layers = 2
 	brickwall_block = [
@@ -197,11 +197,8 @@ let
 			# ψ_right = ψ_bra_collection[layer_idx]
 			
  
-
-			# println("\n", repeat("-", 100))
-			fidelity₁ = 0
-			fidelity₂ = 0
-
+			# Optimize all gates in the current layer by sweeping
+			fidelity₁ = fidelity₂ = 0
 			for iter_idx in 1:default_iters
 				# Update all gates from top to bottom
 				# println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: top-down sweeping")
@@ -245,7 +242,6 @@ let
 		end
 
 
-
 		# Compute the cost function after each sweep
 		cost_function[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
 		en = validate_circuit(circuit_gates, sites, state; Ny = model.Ny, Hamiltonian = H, cutoff=1e-10)
@@ -268,7 +264,6 @@ let
 	# -----------------------------------------------------------------------------------------
 	# Save the optimization results in an HDF5 file for future analysis and visualization
 	# -----------------------------------------------------------------------------------------
-
 	output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(n_layers)_Rzz.h5"
 	h5open(output_filename, "w") do file
 		write(file, "cost_function", cost_function)
@@ -308,7 +303,7 @@ let
 	println("─"^70)
 	@printf "  %-10s E = %+.8f    variance = %.3e\n"		"target"   target.E_target target.var_target
 	@printf "  %-10s E = %+.8f    variance = %.3e\n"		"compiled" compiled.E_opt  compiled.var_opt
-	@printf "  %-10s ΔE = %+.3e   (relative %.3e)\n"		"gap"      ΔE rel_err
+	@printf "  %-10s ΔE = %+.8f   \n"						"gap"      ΔE 
 
 
 	println("\n", repeat("-", 100))
