@@ -99,27 +99,17 @@ end
 function update_single_qubit_gate(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor}, 
   idx::Int64, idx₁::Int64, input_cutoff::Float64 = 1e-10)
     
-	# Set up the gate set without the target gate
-	gates_copy = deepcopy(gates_set)
-	target = gates_copy[idx]
+    # Remove the target gate from the set of gates and check whether it is removed properly
+    target = gates_set[idx]
+    gates_copy = ITensor[gates_set[i] for i in eachindex(gates_set) if i != idx]
+    if target in gates_copy
+    	error("The gate to be optimized is still in the temporary gate set!")
+    end
 
-	# idx₁ = indices_pairs[idx][1]
-	# @show idx₁
-
-	# Remove the target gate from the set of gates and check whether it is removed properly
-	deleteat!(gates_copy, idx)
-	if target in gates_copy
-		error("The gate to be optimized is still in the temporary gate set!")
-	end
-
-
-	# Apply the gate set without the target gate to the initial MPS
-	if length(gates_copy) != 0
-		psi_intermediate = apply(gates_copy, psi_ket; cutoff=input_cutoff)
-		normalize!(psi_intermediate)
-	else
-		psi_intermediate = psi_ket
-	end
+    # Apply the gate set without the target gate to the initial MPS
+    psi_intermediate = isempty(gates_copy) ? 
+        deepcopy(psi_ket) :
+        normalize!(apply(gates_copy, psi_ket; cutoff=input_cutoff))
 
 
 	# Set specific site indices to be primed
@@ -169,27 +159,24 @@ end
 function update_Pauli(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor}, 
   idx::Int64, idx₁::Int64, idx₂::Int64, input_sites, gate_name::String, input_cutoff::Float64 = 1e-10)
     
-	P  = PAULI_PRODUCTS[gate_name]	
 
-    # Set up the gate set without the target gate
-    gates_copy = deepcopy(gates_set)
-    target = gates_copy[idx]
+    # Set up the gate set without the target gate	
+    P = PAULI_PRODUCTS[gate_name]	
+    target = gates_set[idx]
 
 
     # Remove the target gate from the set of gates and check whether it is removed properly
-    deleteat!(gates_copy, idx)
+    gates_copy = ITensor[gates_set[i] for i in eachindex(gates_set) if i != idx]
     if target in gates_copy
     	error("The gate to be optimized is still in the temporary gate set!")
     end
     
 
     # Apply the gate set without the target gate to the initial MPS
-    if length(gates_copy) != 0
-		psi_intermediate = apply(gates_copy, psi_ket; cutoff=input_cutoff)
-		normalize!(psi_intermediate)
-    else
-		psi_intermediate = deepcopy(psi_ket)
-    end
+    psi_intermediate = isempty(gates_copy) ? 
+        deepcopy(psi_ket) :
+        normalize!(apply(gates_copy, psi_ket; cutoff=input_cutoff))
+
 
   
     # Set specific site indices to be primed
@@ -218,7 +205,7 @@ function update_Pauli(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
     # @show trace, cost 
 
 
-    
+
 	# Compute the product of the target gate with its environment tensor & compute the cost function before updating the target gate 
 	C_row = combiner(i₂, i₁)
 	C_col = combiner(j₂, j₁)
