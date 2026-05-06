@@ -1,6 +1,9 @@
 # 4/27/2026
-# Compile the interferometer ground state on a quantum device
-# This file contains the code to compute the expectation values of the plaquette operators on the optimized state and the target state
+# Measurement primitives for compiled wave functions of the Kitaev honeycomb
+# model: plaquette expectation values, energy/variance against the Kitaev
+# Hamiltonian, and helpers `validate_circuit` / `validate_reference` that
+# bundle the per-state measurements for the post-optimization report.
+
 
 using ITensors
 using ITensorMPS
@@ -8,16 +11,19 @@ using ITensorMPS
 include("plaquette.jl")
 include("honeycomb.jl")
 
+
+# Note: ITensor's "iY" is the real matrix i·Y, so (iY)·(iY) = -I and the
+# MPO built from these ops equals **-Wp**. Recover ⟨Wp⟩ via -real(inner(…)).
 const PLAQUETTE_OPS = ("iY", "Z", "X", "X", "Z", "iY")
 
 
 """
-    plaquette_mpo(p_sites, sites)
+    plaquette_mpo(p_sites, sites) -> MPO
 
-Build the Kitaev plaquette MPO `Wp = (iY) Z X X Z (iY)` on the six ordered
-sites in `p_sites`.
+Build the (signed) Kitaev plaquette MPO on the six ordered sites in `p_sites`.
+Returned MPO equals `-Wp` by the iY-convention; take `-real(inner(ψ', _, ψ))`
+to recover ⟨Wp⟩.
 """
-
 function plaquette_mpo(p_sites, sites)
     os = OpSum()
     os += Tuple(Iterators.flatten(zip(PLAQUETTE_OPS, p_sites)))
@@ -27,17 +33,14 @@ end
 
 
 """
-    measure_plaquettes(ψ::MPS, sites; width = 4) -> NamedTuple
- 
-Measure the Kitaev plaquette expectation values ⟨Wp⟩ on a pre-existing MPS
-`ψ` for a width-`width` honeycomb cylinder.
+    measure_plaquettes(ψ::MPS, sites; Ny::Integer) -> NamedTuple
 
-Use this when `ψ` has already been prepared (e.g. by flux-sector projection
-of the initial product state) and you only need to measure, not compile.
+Per-plaquette ⟨Wp⟩ on a honeycomb cylinder of circumference `Ny`. In the
+flux-free Kitaev ground state every ⟨Wp⟩ = +1, so closeness of `wp` to `+1`
+is the local flux-sector check that should pass even at moderate global fidelity.
 
 Returns `(; wp, plaquettes)`.
 """
-
 function measure_plaquettes(ψ::MPS, sites; width::Integer = 4)
     plaquettes = hexagonal_plaquettes(length(sites), width)
     wp = [-real(inner(ψ', plaquette_mpo(p, sites), ψ)) for p in plaquettes]
@@ -59,7 +62,6 @@ Bond and wedge dispatch matches `src_evolution/kitaev_honeycomb.jl`, so the MPO
 is consistent with the ground-state MPS stored in `data/kitaev_honeycomb_*.h5`.
 Set `κ = 0.0` to skip the wedge construction.
 """
-
 function energy_mpo(sites; Nx::Integer, Ny::Integer, 
                     Jx::Real = 1.0, Jy::Real = 1.0, Jz::Real = 1.0, 
                     κ::Real  = 0.0, yperiodic::Bool = true)
@@ -72,7 +74,7 @@ function energy_mpo(sites; Nx::Integer, Ny::Integer,
     
 
     # ── two-body Kitaev bonds ─────────────────────────────────────────────────
-    bonds = honeycomb_lattice_Cstyle(Nx, Ny; yperiodic=yperiodic)
+    bonds = honeycomb_lattice_Cstyle(Nx, Ny; yperiodic)
     xbond, ybond, zbond = 0, 0, 0
 
 
@@ -99,7 +101,7 @@ function energy_mpo(sites; Nx::Integer, Ny::Integer,
 
     # ── three-spin (wedge) terms ─────────────────────────────────────────
     if abs(κ) > 1e-12
-        wedge = honeycomb_Cstyle_wedge(Nx, Ny; yperiodic=yperiodic)
+        wedge = honeycomb_Cstyle_wedge(Nx, Ny; yperiodic)
         count = 0
         
         for w in wedge 
@@ -175,7 +177,6 @@ Return `(; E, variance)` where `E = ⟨ψ|H|ψ⟩` and
 `variance = ⟨ψ|H²|ψ⟩ - E²`. The variance is small when ψ is close to an
 eigenstate of H — useful as a quality check independent of fidelity.
 """
-
 function measure_energy(ψ::MPS, H::MPO)
     E  = real(inner(ψ', H, ψ))
     H2 = real(inner(H, ψ, H, ψ))
@@ -186,26 +187,18 @@ end
 
 """
     validate_circuit(circuit_gates, sites, state; 
-        length::Integer = 6, width::Integer = 4, input_Jx::Real = 1.0, input_Jy::Real = 1.0, input_Jz::Real = 1.0,
-        input_κ::Real = -0.4, cutoff::Real = 1e-10) -> NamedTuple
+        Ny::Integer, Hamiltonian, cutoff::Real = 1e-10) -> NamedTuple
 
-Apply `circuit_gates` to the product state defined by `state` on `sites`
-and return the plaquette expectation values ⟨Wp⟩ on the compiled MPS and the energy and 
-variance of the compiled state.
-
-In the Kitaev spin-liquid ground state every ⟨Wp⟩ = +1, so closeness of
-`wp_opt` to `+1` is the local flux-sector check that should pass even at
-moderate global fidelity.
+Apply `circuit_gates` to the product state defined by `state` on `sites`,
+then measure on the compiled MPS:
+  - per-plaquette ⟨Wp⟩ (flux-sector check; +1 in the Kitaev ground state),
+  - energy `E = ⟨ψ|H|ψ⟩` and variance `⟨H²⟩ - E²` against the Kitaev
+    Hamiltonian built with `(Jx, Jy, Jz, κ)`.
 
 Returns `(; ψ_opt, E_opt, var_opt, wp_opt, plaquettes)`.
 """
-
-function validate_circuit(circuit_gates, sites, state;
-        Nx::Integer, Ny::Integer = 4,
-        Jx::Real = 1.0, Jy::Real = 1.0, Jz::Real = 1.0, κ::Real = -0.4,
-        cutoff::Real = 1e-10)
+function validate_circuit(circuit_gates, sites, state; Ny::Integer, Hamiltonian, cutoff::Real = 1e-10)
     
-
     # Apply the optimized circuit to the initial product state.
     ψ_opt = MPS(sites, state)
     for layer in circuit_gates
@@ -221,7 +214,6 @@ function validate_circuit(circuit_gates, sites, state;
 
 
     # Energy & variance of the compiled state
-    Hamiltonian = energy_mpo(sites; Nx, Ny, Jx, Jy, Jz, κ)
     en      = measure_energy(ψ_opt, Hamiltonian)
     E_opt   = en.E
     var_opt = en.variance
@@ -233,9 +225,7 @@ end
 
 
 """
-    validate_reference(ψ_T; 
-        Nx::Integer = 6, Ny::Integer = 4, Jx::Real = 1.0, Jy::Real = 1.0, Jz::Real = 1.0,
-        κ::Real = -0.4, cutoff::Real = 1e-10) -> NamedTuple
+    validate_reference(ψ_T; Ny::Integer, Hamiltonian) -> NamedTuple
 
 Return the plaquette expectation values ⟨Wp⟩ on the reference MPS and the energy and 
 variance of the reference state.
@@ -246,13 +236,10 @@ moderate global fidelity.
 
 Returns `(; E_target, var_target, wp_target, plaquettes)`.
 """
-
-function validate_reference(ψ_T; 
-        Nx::Integer = 6, Ny::Integer = 4, Jx::Real = 1.0, Jy::Real = 1.0, Jz::Real = 1.0, κ::Real = -0.4)
+function validate_reference(ψ_T; Ny::Integer, Hamiltonian)
     
     sites = siteinds(ψ_T)
         
-    
     # Measure ⟨Wp⟩ on every plaquette on the target MPS
     plaquettes = hexagonal_plaquettes(length(sites), Ny)
     wp(ψ, p)   = -real(inner(ψ', plaquette_mpo(p, sites), ψ))
@@ -260,7 +247,6 @@ function validate_reference(ψ_T;
 
 
     # Energy & variance 
-    Hamiltonian = energy_mpo(sites; Nx, Ny, Jx, Jy, Jz, κ)
     en      = measure_energy(ψ_T, Hamiltonian)
     E_target   = en.E
     var_target = en.variance

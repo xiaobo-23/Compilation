@@ -34,7 +34,7 @@ const N = 24                             # Total number of qubits
 const J₁ = 1.0
 const τ = 1.0
 const cutoff = 1e-4
-const nsweeps = 25
+const nsweeps = 1
 const default_iters = 25                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
 const stop_criteria = 1e-4               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
 
@@ -279,8 +279,10 @@ let
 
 	# Single source of truth for the Kitaev parameters used by both validations.
 	model = (; Nx = 8, Ny = 3, Jx = 1.0, Jy = 1.0, Jz = 1.0, κ = -0.4)
-	compiled = validate_circuit(circuit_gates, sites, state; model..., cutoff)
-	target   = validate_reference(ψ_T;                       model...)
+	H     = energy_mpo(sites; model...)
+
+	compiled = validate_circuit(circuit_gates, sites, state; Ny = model.Ny, Hamiltonian = H, cutoff = cutoff)
+	target   = validate_reference(ψ_T;                       Ny = model.Ny, Hamiltonian = H)
 
 
 	# Cross-check vs the DMRG ground-state energy stored alongside ψ_T.
@@ -308,8 +310,6 @@ let
 	println("─"^70)
 	@printf "  %-12s %s\n" "optimized" join((@sprintf("%+.8f", x) for x in compiled.wp_opt), "  ")
 	@printf "  %-12s %s\n" "target"    join((@sprintf("%+.8f", x) for x in target.wp_target), "  ")
-
-
 
 
 
