@@ -49,7 +49,7 @@ function update_single_gate(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITenso
     prime!(psi_bra[idx₂], tags = "Site")
     i₁, i₂ = siteind(psi_intermediate, idx₁), siteind(psi_intermediate, idx₂)
     j₁, j₂ = siteind(psi_bra, idx₁), siteind(psi_bra, idx₂)
-    @show i₁, i₂, j₁, j₂
+    # @show i₁, i₂, j₁, j₂
     # println("")
 
 
@@ -69,7 +69,7 @@ function update_single_gate(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITenso
     # Compute the product of the target gate with its environment tensor & compute the cost function before updating the target gate 
     trace = real((T * target)[1])
     cost = compute_cost_function(psi_ket, psi_bra, gates_set, input_cutoff)
-    @show trace, cost 
+    # @show trace, cost 
     println("")
 
     
@@ -120,7 +120,7 @@ function update_single_qubit_gate(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{
 	prime!(psi_bra[idx₁], tags = "Site")
 	i₁ = siteind(psi_intermediate, idx₁)
 	j₁ = siteind(psi_bra, idx₁)
-	@show i₁, j₁
+	# @show i₁, j₁
 
 
 	# Compute the environment tensor T for the target single-qubit gate from scratch
@@ -139,8 +139,8 @@ function update_single_qubit_gate(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{
 	# Compute the product of the target gate with its environment tensor & compute the cost function before updating the target gate 
 	trace = real((T * target)[1])
 	cost = compute_cost_function(psi_ket, psi_bra, gates_set, input_cutoff)
-	@show trace, cost 
-	println("")
+	# @show trace, cost 
+	# println("")
 
 
 	# Perform SVD (USV†) on the environment tensors 
@@ -190,7 +190,7 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
     prime!(psi_bra[idx₂], tags = "Site")
     i₁, i₂ = siteind(psi_intermediate, idx₁), siteind(psi_intermediate, idx₂)
     j₁, j₂ = siteind(psi_bra, idx₁), siteind(psi_bra, idx₂)
-    @show i₁, i₂, j₁, j₂
+    # @show i₁, i₂, j₁, j₂
     # println()
 
 
@@ -209,7 +209,7 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
 
 	trace = real((E_T * target)[1])
     cost = compute_cost_function(psi_ket, psi_bra, gates_set, input_cutoff)
-    @show trace, cost 
+    # @show trace, cost 
 
 
 	# Compute the product of the target gate with its environment tensor & compute the cost function before updating the target gate 
@@ -225,7 +225,7 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
 	coeff_B = real(tr(matrix_T))
 	θ₁ = atan(coeff_A, coeff_B)
 	θ₂ = θ₁ + π
-	@show coeff_A, coeff_B, coeff_A/coeff_B, θ₁, θ₂
+	# @show coeff_A, coeff_B, coeff_A/coeff_B, θ₁, θ₂
 	# println()
 
 
@@ -236,7 +236,8 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
 		push!(Fidelity_values, real((E_T * updated_T)[1]))
 	end
 	# @show Fidelity_values	
-	@show maximum(Fidelity_values)
+	# @show maximum(Fidelity_values)
+
 	
 	# For Dubugging: search for the optimal angle by computing the cost function in a different way
 	F_values = []
@@ -245,7 +246,7 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
 		push!(F_values, tmp)
 	end
 	# @show F_values
-	@show maximum(F_values)
+	# @show maximum(F_values)
 
 
 	# Update the target Rzz gate using native Rzz gate constructor in ITensorMPS.jl
@@ -258,8 +259,10 @@ function update_Rzz(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor},
 	else
 		updated_T = updated_T2
 	end
-	@show real((E_T * updated_T)[1]), real((E_T * updated_T1)[1]), real((E_T * updated_T2)[1])
-	println()
+	# @show real((E_T * updated_T)[1]), real((E_T * updated_T1)[1]), real((E_T * updated_T2)[1])
+	# println()
+
+
 	
 	# Double check the optimal angle by computing the cost function after updating the target Rzz gate
 	# F₁ = coeff_B * cos(θ₁) + coeff_A * sin(θ₁)

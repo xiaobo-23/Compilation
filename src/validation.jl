@@ -253,3 +253,25 @@ function validate_reference(ψ_T; Ny::Integer, Hamiltonian)
     
     return (; E_target, var_target, wp_target, plaquettes)
 end
+
+
+"""
+    mmeasure_progress(sites, state, ψ_T::MPS, circuit_gates, H::MPO; cutoff::Real = 1e-10)
+        -> (; fidelity, energy)
+
+Apply `circuit_gates` to `ψ₀`, normalize, and return both the overlap fidelity
+with `ψ_T` and the energy against `H` from the same compiled MPS. Useful as a
+drop-in replacement for `compute_cost_function_multi_layers` inside the
+optimization loop when you also want to track energy descent.
+"""
+function measure_progress(sites, state, ψ_T::MPS, circuit_gates, H::MPO;
+                          cutoff::Real = 1e-10)
+    ψ_opt = MPS(sites, state)
+    for layer in circuit_gates
+        ψ_opt = apply(layer, ψ_opt; cutoff)
+    end
+    normalize!(ψ_opt)
+    fidelity = real(inner(ψ_T, ψ_opt))
+    energy   = real(inner(ψ_opt', H, ψ_opt))
+    return (; fidelity, energy)
+end

@@ -13,7 +13,7 @@ using LinearAlgebra, MKL
 
 include("compute_cost_function.jl")
 include("update_gates.jl")
-include("compilation_initialization.jl")
+include("gates_initialization.jl")
 include("plaquette.jl")
 include("validation.jl")
 
@@ -44,9 +44,9 @@ let
 	# Set up and optimize single-qubit & two-qubit gates to variationally
 	# compile the wave function of the Kitaev model on a cylinder.
 	#  ---------------------------------------------------------------------------
-	println("─"^70)
+	println(repeat("-", 100))
 	println("Variational circuit compilation: ground state preparation for the interferometer based on the Kitaev honeycomb model")
-	println("─"^70, "\n")
+	println(repeat("-", 100), "\n")
 
 
 	# Load the target ground-state MPS (e.g. Kitaev honeycomb).
@@ -75,47 +75,49 @@ let
 	# state = [isodd(n) ? "Up" : "Dn" for n in 1:N]   # Néel product state
 	# ψ₀	= random_mps(sites, state; linkdims = 8)  # bond-dimension-8 random MPS
 
-	
+
+	# Construct the Hamiltonian MPO for energy measurement.
+	H = energy_mpo(sites; model...)
 	
 	
 	# ---------------------------------------------------------------------------
 	# Project the initial MPS into the same topological sector as the target MPS
 	# by applying ∏ₚ (1 + Wₚ)/√2, then align the global phase.
-	#---------------------------------------------------------------------------
-	# println("─"^70)
-	# println("Flux-sector projection of the initial MPS")
-	# println("─"^70)
+	# ---------------------------------------------------------------------------
+	println(repeat("-", 100))
+	println("Flux-sector projection of the initial MPS")
+	println(repeat("-", 100))
 	
 	
-	# # Build one (1 + Wp)/√2 tensor per plaquette.
-	# indices = hexagonal_plaquettes(N, 4)
-	# projection = ITensor[]
-	# for p_sites in indices
-	# 	s = sites[p_sites]
+	# Build one (1 + Wp)/√2 tensor per plaquette.
+	indices = hexagonal_plaquettes(N, 4)
+	projection = ITensor[]
+	for p_sites in indices
+		s = sites[p_sites]
 		
-	# 	id_tensor = prod(op("Id", tmp_site) for tmp_site in s)
-	# 	pauli_tensor = op("Y", s[1]) * op("Z", s[2]) * op("X", s[3]) * op("X", s[4]) * op("Z", s[5]) * op("Y", s[6])
+		id_tensor = prod(op("Id", tmp_site) for tmp_site in s)
+		pauli_tensor = op("Y", s[1]) * op("Z", s[2]) * op("X", s[3]) * op("X", s[4]) * op("Z", s[5]) * op("Y", s[6])
 
-	# 	hj = (id_tensor + pauli_tensor) / sqrt(2)
-	# 	push!(projection, hj)
-	# end
+		hj = (id_tensor + pauli_tensor) / sqrt(2)
+		push!(projection, hj)
+	end
 
 	
-	# # Apply the projector and align the global phase to maximize Re⟨ψ_T | ψ₀⟩.
-	# ψ₀ = apply(projection, ψ₀; cutoff=cutoff)
-	# fidelity₀ = inner(ψ_T, ψ₀)
-	# ϕ_phase = angle(fidelity₀)
-	# ψ₀[1] = ψ₀[1] * exp(-im * ϕ_phase)
-	# fidelity₀_rotated = inner(ψ_T, ψ₀)	
+	# Apply the projector and align the global phase to maximize Re⟨ψ_T | ψ₀⟩.
+	ψ₀ = apply(projection, ψ₀; cutoff=cutoff)
+	fidelity₀ = inner(ψ_T, ψ₀)
+	ϕ_phase = angle(fidelity₀)
+	ψ₀[1] = ψ₀[1] * exp(-im * ϕ_phase)
+	fidelity₀_rotated = inner(ψ_T, ψ₀)	
 	
 
-	# # Diagnostics: bond dimensions, overlaps, and per-plaquette ⟨Wp⟩.
-	# result_proj = measure_plaquettes(ψ₀, sites; width = 4)
-	# evals₀      = result_proj.wp
-	# @printf "  bond dimensions     : %s\n" linkdims(ψ₀)
-	# @printf "  ⟨ψ_T | ψ₀⟩          : %+.6f %+.6fi\n" real(fidelity₀)   imag(fidelity₀)
-	# @printf "  ⟨ψ_T | ψ₀⟩ rotated  : %+.6f %+.6fi\n" real(fidelity₀_rotated) imag(fidelity₀_rotated)
-	# println("⟨Wp⟩ on each hexagon:           ", evals₀)
+	# Diagnostics: bond dimensions, overlaps, and per-plaquette ⟨Wp⟩.
+	result_proj = measure_plaquettes(ψ₀, sites; Ny = 4)
+	evals₀      = result_proj.wp
+	@printf "  bond dimensions     : %s\n" linkdims(ψ₀)
+	@printf "  ⟨ψ_T | ψ₀⟩          : %+.6f %+.6fi\n" real(fidelity₀)   imag(fidelity₀)
+	@printf "  ⟨ψ_T | ψ₀⟩ rotated  : %+.6f %+.6fi\n" real(fidelity₀_rotated) imag(fidelity₀_rotated)
+	println("⟨Wp⟩ on each hexagon:           ", evals₀)
 
 
 	
@@ -157,12 +159,16 @@ let
 		Optimize the parameters of all SU(4) gates in the circuit layer by layer
 	"""
 	cost_function = zeros(Float64, nsweeps)
-	reference = zeros(Float64, nsweeps)
+	energy_trace = zeros(Float64, nsweeps)
 	optimization_trace = Float64[]
 	fidelity_trace = Float64[]
 
 
 	for iteration in 1 : nsweeps 
+		println(repeat("-", 100))
+   		@printf "Sweep %d/%d\n" iteration nsweeps
+        println("\n")
+
 		# Optimize each layer of the two-qubit gate in a forward sweeping order 
 		for layer_idx in 1 : length(circuit_gates)
 			optimization_gates = circuit_gates[layer_idx]
@@ -197,13 +203,14 @@ let
 			
  
 
-			println("\n", repeat("#", 200))
+			# println("\n", repeat("-", 100))
 			fidelity₁ = 0
 			fidelity₂ = 0
 
 			for iter_idx in 1:default_iters
 				# Update all gates from top to bottom
-				println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: top-down sweeping")
+				# println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: top-down sweeping")
+
 				for idx in 1:length(idx_pairs)
 					updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
 						update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
@@ -214,10 +221,11 @@ let
 					append!(optimization_trace, tmp_trace)
 					append!(fidelity_trace, tmp_cost)
 				end
-				println("\n")
+				# println("\n")
+
 
 				# Update all gates from bottom to top
-				println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: bottom-up sweeping")
+				# println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: bottom-up sweeping")
 				for idx in length(idx_pairs):-1:1
 					updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
 						update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
@@ -229,44 +237,47 @@ let
 					append!(optimization_trace, tmp_trace)
 					append!(fidelity_trace, tmp_cost)
 				end
-				println("\n")
+				# println("\n")
 
 				fidelity₂ = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
 				if iter_idx > 1 && abs(fidelity₂ - fidelity₁) < stop_criteria
-					println("\nThe change of the cost function is smaller than the stopping criteria. Stop the optimization of gates in this layer.")
+					println("The change of the cost function is smaller than the stopping criteria. Stop the optimization of gates at layer $(layer_idx).")
 					println([fidelity₁, fidelity₂, abs(fidelity₂ - fidelity₁)])
 					break
 				end
 				fidelity₁ = fidelity₂
 			end
-			println(repeat("#", 200), "\n")
+
+			# println("\n", repeat("-", 100))
 		end
 
 		# Compute the cost function after each sweep
 		cost_function[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
-		# reference[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, gates, cutoff)
+		en = measure_progress(sites, state, ψ_T, circuit_gates, H; cutoff=1e-10)
+		energy_trace[iteration] = en.energy
+		
+		println("\n")
+		@printf "──── sweep %d/%d done   Fidelity = %+.6f   Energy = %+.6f\n" iteration nsweeps cost_function[iteration] en.energy
+		println(repeat("-", 100), "\n")
 	end
-
 	
-	"""Print the history of the cost function and the difference between the optimization trace and the fidelity trace in the terminal"""
-	println("\nThe history of the cost function during the optimization: ")
+	# Sanity-check dumps — uncomment when verifying the optimization plumbing:
 	@show cost_function
-	println("\nComputing the fidelity using two different approaches & the difference should fluctuate around zero with machine precision: ")
-	@show (optimization_trace - fidelity_trace)[1 : 20]
+	@show energy_trace
+	# @show (optimization_trace - fidelity_trace)[1 : 20]
 
 
-	
-	# """Save the optimization results in an HDF5 file for future analysis and visualization"""
-	# output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(n_layers)_Rzz.h5"
-	# h5open(output_filename, "w") do file
-	# 	write(file, "cost function", cost_function)
-	# 	write(file, "fidelity0", fidelity₀)
-	# 	write(file, "Wp_0", evals₀)
-	# 	write(file, "Wp_1", evals₁)
-	# 	write(file, "Wp_2", evals₂)
-	# 	write(file, "optimization trace", optimization_trace)
-	# 	write(file, "fidelity trace", fidelity_trace)
-	# end
+	"""Save the optimization results in an HDF5 file for future analysis and visualization"""
+	output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(n_layers)_Rzz.h5"
+	h5open(output_filename, "w") do file
+		write(file, "cost function", cost_function)
+		write(file, "fidelity0", fidelity₀)
+		write(file, "Wp_0", evals₀)
+		write(file, "Wp_1", evals₁)
+		write(file, "Wp_2", evals₂)
+		write(file, "optimization trace", optimization_trace)
+		write(file, "fidelity trace", fidelity_trace)
+	end
 
 
 
@@ -275,9 +286,6 @@ let
 	# the hexagonal plaquette operators on both the compiled MPS and the target MPS, 
 	# and report the optimization history.
 	# -----------------------------------------------------------------------------------
-
-	# Construct the Hamiltonian MPO for energy measurement.
-	H     = energy_mpo(sites; model...)
 	compiled = validate_circuit(circuit_gates, sites, state; Ny = model.Ny, Hamiltonian = H, cutoff = cutoff)
 	target   = validate_reference(ψ_T;                       Ny = model.Ny, Hamiltonian = H)
 
@@ -294,7 +302,7 @@ let
 	rel_err  = ΔE / abs(target.E_target)
 
 	
-	println("\n", "─"^70)
+	println("\n", repeat("-", 100))
 	println("Energy, variance, fidelity")
 	println("─"^70)
 	@printf "  %-10s E = %+.8f    variance = %.3e\n"                          "target"   target.E_target target.var_target
@@ -302,9 +310,9 @@ let
 	@printf "  %-10s ΔE = %+.3e   (relative %.3e)\n"                          "gap"      ΔE rel_err
 
 
-	println("\n", "─"^70)
+	println("\n", repeat("-", 100))
 	println("⟨Wp⟩ on each plaquette")
-	println("─"^70)
+	println(repeat("-", 100))
 	@printf "  %-12s %s\n" "optimized" join((@sprintf("%+.8f", x) for x in compiled.wp_opt), "  ")
 	@printf "  %-12s %s\n" "target"    join((@sprintf("%+.8f", x) for x in target.wp_target), "  ")
 
