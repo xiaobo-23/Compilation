@@ -4,9 +4,7 @@
 
 
 using ITensors, ITensorMPS
-using HDF5, MAT
 using Random
-using TimerOutputs
 using LinearAlgebra, MKL
 using Printf
 
@@ -24,19 +22,16 @@ BLAS.set_num_threads(8)
 @info "BLAS configuration" vendor=BLAS.vendor() config=BLAS.get_config() threads=BLAS.get_num_threads()
 println()
 
-# MKL_NUM_THREADS = 8
-# OPENBLAS_NUM_THREADS = 8
-# OMP_NUM_THREADS = 8
-
 
 
 # ─── Compilation parameters ──────────────────────────────────────────────
-const N = 24                             # Total number of qubits
+const model = (; Nx = 8, Ny = 3, Jx = 1.0, Jy = 1.0, Jz = 1.0, κ = -0.4, yperiodic = true)
+const N = model.Nx * model.Ny            # Total number of qubits
 const cutoff = 1e-4
 const nsweeps = 2
 const default_iters = 25                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
 const stop_criteria = 1e-4               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
-const model = (; Nx = 8, Ny = 3, Jx = 1.0, Jy = 1.0, Jz = 1.0, κ = -0.4, yperiodic = true)
+
 
 
 let
@@ -69,30 +64,29 @@ let
 	Random.seed!(random_seed)
 	state = fill("Up", N)
 	# state = ["Up" for n in 1:N]
+	# state = [isodd(n) ? "Up" : "Dn" for n in 1:N]
 	ψ₀    = MPS(sites, state)
-	
-	# Alternative initializations — uncomment as needed:
-	# state = [isodd(n) ? "Up" : "Dn" for n in 1:N]   # Néel product state
 	# ψ₀	= random_mps(sites, state; linkdims = 8)  # bond-dimension-8 random MPS
 
 
-	# Construct the Hamiltonian MPO for energy measurement.
+
+	#  ── Construct the Hamiltonian MPO for energy measurement. ─────────────── 
 	H = energy_mpo(sites; model...)
 	
 	
 	
 	
-	
-	# # ---------------------------------------------------------------------------
-	# # Project the initial MPS into the same topological sector as the target MPS
-	# # by applying ∏ₚ (1 + Wₚ)/√2, then align the global phase.
-	# # ---------------------------------------------------------------------------
+
+	# ---------------------------------------------------------------------------
+	# Project the initial MPS into the same topological sector as the target MPS
+	# by applying ∏ₚ (1 + Wₚ)/√2, then align the global phase.
+	# ---------------------------------------------------------------------------
 	# println(repeat("-", 100))
 	# println("Flux-sector projection of the initial MPS")
 	# println(repeat("-", 100))
 	
 	
-	# # Build one (1 + Wp)/√2 tensor per plaquette.
+	# Build one (1 + Wp)/√2 tensor per plaquette.
 	# indices = hexagonal_plaquettes(N, 4)
 	# projection = ITensor[]
 	# for p_sites in indices
@@ -161,7 +155,6 @@ let
 	# -----------------------------------------------------------------------------------------
 	# Optimize the parameters of single-qubit & Rzz(θ) gates in the circuit layer by layer
 	# -----------------------------------------------------------------------------------------
-
 	cost_function = zeros(Float64, nsweeps)
 	energy_trace = zeros(Float64, nsweeps)
 	optimization_trace = Float64[]
