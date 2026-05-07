@@ -258,8 +258,7 @@ let
 		write(file, "optimization_trace", optimization_trace)
 		write(file, "fidelity_trace", fidelity_trace)
 		write(file, "fidelity0", fidelity₀)
-		write(file, "chi0", linkdins(ψ₀))
-		# write(file, "Wp_0", evals₀)
+		write(file, "chi0", linkdims(ψ₀))
 	end
 
 

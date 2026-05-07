@@ -27,30 +27,25 @@ const PAULI_PRODUCTS = Dict{String, Matrix{ComplexF64}}(
 function update_single_gate(psi_ket::MPS, psi_bra::MPS, gates_set::Vector{ITensor}, 
   idx::Int64, idx₁::Int64, idx₂::Int64, input_cutoff::Float64 = 1e-10)
     
-    # Set up the gate set without the target gate
-    gates_copy = deepcopy(gates_set)
-    target = gates_copy[idx]
+    # Remove the target gate from the set of gates and check whether it is removed properly
+    target = gates_set[idx]
+    gates_copy = ITensor[gates_set[i] for i in eachindex(gates_set) if i != idx]
+    if target in gates_copy
+    	error("The gate to be optimized is still in the temporary gate set!")
+    end
 
     # idx₁, idx₂ = indices_pairs[idx][1], indices_pairs[idx][2]
     # @show idx₁, idx₂
 
-    # Remove the target gate from the set of gates and check whether it is removed properly
-    deleteat!(gates_copy, idx)
-    if target in gates_copy
-      error("The gate to be optimized is still in the temporary gate set!")
-    end
-    
 
     # Apply the gate set without the target gate to the initial MPS
-    if length(gates_copy) != 0
-      psi_intermediate = apply(gates_copy, psi_ket; cutoff=input_cutoff)
-      normalize!(psi_intermediate)
-    else
-      psi_intermediate = psi_ket
-    end
-
+    psi_intermediate = isempty(gates_copy) ? 
+        deepcopy(psi_ket) :
+        normalize!(apply(gates_copy, psi_ket; cutoff=input_cutoff))
   
-    # Set specific site indices to be primed
+    
+    
+        # Set specific site indices to be primed
     prime!(psi_bra[idx₁], tags = "Site")
     prime!(psi_bra[idx₂], tags = "Site")
     i₁, i₂ = siteind(psi_intermediate, idx₁), siteind(psi_intermediate, idx₂)
