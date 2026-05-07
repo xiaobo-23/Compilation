@@ -26,10 +26,10 @@ println("")
 const model = (; Nx = 8, Ny = 3, Jx = 1.0, Jy = 1.0, Jz = 1.0, κ = -0.4, yperiodic = true)
 const N = model.Nx * model.Ny            # Total number of qubits
 const cutoff = 1e-4
-const nsweeps = 2
+const nsweeps = 1
 const default_iters = 25                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
 const stop_criteria = 1e-4               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
-
+const random_seed=0
 
 
 # Base block: 6 layers, Kitaev cylinder bond pattern (Nx=8, Ny=3 → N=24)
@@ -69,15 +69,10 @@ let
 	println("")
 
 
-	# ── Initialize the trial MPS as a product state. ─────────────────────────
-	# A random MPS is also supported (see below) but the all-Up product state is
-	# the cleanest reference for a Kitaev variational compilation: it has zero
-	# entanglement, so any entanglement in ψ_opt comes from the optimized circuit.
-	random_seed = 100
+	# ── Initialize the wavefunction─────────────────────────
+	# Initialize the wavefunction as a product state or a random MPS. 
 	Random.seed!(random_seed)
 	state = fill("Up", N)
-	# state = ["Up" for n in 1:N]
-	# state = [isodd(n) ? "Up" : "Dn" for n in 1:N]
 	ψ₀    = MPS(sites, state)
 	# ψ₀	= random_mps(sites, state; linkdims = 8)  # bond-dimension-8 random MPS
 
@@ -88,8 +83,8 @@ let
 	
 	
 	# -----------------------------------------------------------------------------------------
-	# Project the initial MPS into the same topological sector as the target MPS
-	# by applying ∏ₚ (1 + Wₚ)/√2, then align the global phase.
+	# Project a product state into the correct topological sector as the target MPS
+	# by applying ∏ₚ (1 + Wₚ)/√2, then optionally align the global phase.
 	# -----------------------------------------------------------------------------------------
 	println(repeat("-", 100))
 	println("Flux-sector projection of the initial MPS")
@@ -129,18 +124,17 @@ let
 	
 	
 	# -----------------------------------------------------------------------------------------
-	# Build the variational brickwall ansatz used to compile the target MPS.
+	# Build the variational free-fermion ansatz to compile the target MPS.
 	# -----------------------------------------------------------------------------------------
-	# Randomly initialize two-qubit gates in the circuit that implements the free fermion approach to the Kitaev model
+	# Initialize two-qubit gates in the circuit randomly
+	# The gate pattern cover all bonds according to two-body interactions. 
 	circuit_gates = pauli_gates_multi_layers(input_layers, sites)
 	
-	
 	# Check the consistency between the number of layers of gates and the number of layers of integer pairs in the input specification.
-	# @assert length(circuit_gates) == length(input_layers) """
-	# 	Layer-count mismatch: got $(length(circuit_gates)) layers of gates for $(length(input_layers)) layer specs. 
-	# """ 
+	@assert length(circuit_gates) == length(input_layers) """
+		Layer-count mismatch: got $(length(circuit_gates)) layers of gates for $(length(input_layers)) layer specs. 
+	""" 
 	
-
 
 	# -----------------------------------------------------------------------------------------
 	# Optimize the parameters of single-qubit & Rzz(θ) gates in the circuit layer by layer
@@ -253,19 +247,20 @@ let
 
 
 
-	# # -----------------------------------------------------------------------------------------
-	# # Save the optimization results in an HDF5 file for future analysis and visualization
-	# # -----------------------------------------------------------------------------------------
-	# output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(n_repeat)_Pauli.h5"
-	# h5open(output_filename, "w") do file
-	# 	write(file, "cost_function", cost_function)
-	# 	write(file, "energy_trace", energy_trace)
-	# 	write(file, "plaquette_trace", plaquette_trace)
-	# 	write(file, "optimization_trace", optimization_trace)
-	# 	write(file, "fidelity_trace", fidelity_trace)
-	# 	# write(file, "fidelity0", fidelity₀)
-	# 	# write(file, "Wp_0", evals₀)
-	# end
+	# -----------------------------------------------------------------------------------------
+	# Save the optimization results in an HDF5 file for future analysis and visualization
+	# -----------------------------------------------------------------------------------------
+	output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(n_repeats)_Pauli.h5"
+	h5open(output_filename, "w") do file
+		write(file, "cost_function", cost_function)
+		write(file, "energy_trace", energy_trace)
+		write(file, "plaquette_trace", plaquette_trace)
+		write(file, "optimization_trace", optimization_trace)
+		write(file, "fidelity_trace", fidelity_trace)
+		write(file, "fidelity0", fidelity₀)
+		write(file, "chi0", linkdins(ψ₀))
+		# write(file, "Wp_0", evals₀)
+	end
 
 
 
@@ -302,11 +297,11 @@ let
 
 
 
-	# Save the expectation values of the plaquette operators in an HDF5 file
-	# h5open(output_filename, "r+") do file
-	# 	write(file, "Wp_opt", compiled.wp_opt)
-	# 	write(file, "Wp_target", target.wp_target)
-	# end
+	#Save the expectation values of the plaquette operators in an HDF5 file
+	h5open(output_filename, "r+") do file
+		write(file, "Wp_opt", compiled.wp_opt)
+		write(file, "Wp_target", target.wp_target)
+	end
 
   return
 end
