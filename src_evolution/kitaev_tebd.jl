@@ -12,14 +12,10 @@ using TimerOutputs
 
 # ---- Local helpers ----
 include("HoneycombLattice.jl")
-include("Entanglement.jl")
-include("TopologicalLoops.jl")
-include("CustomObserver.jl")          # DMRG observer; kept for ground-state comparisons
+include("build_gates.jl")
 
 
 # ---- BLAS / LAPACK threading ----
-# NOTE: ENV["MKL_NUM_THREADS"] etc. only take effect if set BEFORE `using MKL`.
-# The runtime call below works regardless of load order.
 const NTHREADS = 8
 BLAS.set_num_threads(NTHREADS)
 
@@ -27,7 +23,7 @@ BLAS.set_num_threads(NTHREADS)
 @show BLAS.get_num_threads()
 
 
-## ---- Lattice: 4 × 3 × 2 honeycomb cluster on a cylinder (24 qubits, YPBC) ----
+# ---- Lattice: 4 × 3 × 2 honeycomb cluster on a cylinder (24 qubits, YPBC) ----
 const Nx_unit = 4                     # Unit cells along x
 const Ny_unit = 3                     # Unit cells along y (cylinder width)
 const Nx      = 2 * Nx_unit           # Sublattice-resolved columns of sites
@@ -35,62 +31,98 @@ const Ny      = Ny_unit               # Sites per ring along y
 const N       = Nx * Ny               # Total qubits = 24
 
 
-## ---- Kitaev couplings ----
+# ---- Kitaev couplings ----
 const Jx = 1.0
 const Jy = 1.0
 const Jz = 1.0
 const κ  = -0.4                       # Three-spin interaction strength
 
 
-## ---- TEBD hyperparameters ----
+# ---- TEBD hyperparameters ----
 const dt          = 0.05              # Trotter step
-const t_max       = 1.0               # Total real-time evolution
+const t_max       = 0.1               # Total real-time evolution
 const nsteps      = round(Int, t_max / dt)
 const cutoff_tebd = 1e-10             # MPS truncation cutoff per gate apply
 const maxdim_tebd = 256               # Maximum bond dimension during TEBD
 
 
-## ---- Profiling ----
+# ---- Gates for TEBD time evolution ----
+const TwoBodyGroup = @NamedTuple{ops::NTuple{2,String}, bonds::Vector{NTuple{2,Int}}}
+
+const two_body_gate_groups = TwoBodyGroup[
+    (ops = ("Sx", "Sx"),
+     bonds = [(1, 2), (3, 4), (5, 6),
+              (7, 8), (9,10), (11,12),
+              (13,14), (15,16), (17,18),
+              (19,20), (21,22), (23,24)]),
+
+    (ops = ("Sz", "Sz"),
+     bonds = [(2, 3), (4, 5), (1, 6),     # block 1
+              (8, 9), (10,11), (7,12),    # block 2
+              (14,15), (16,17), (13,18),  # block 3
+              (20,21), (22,23), (19,24)]),# block 4
+
+    (ops = ("Sy", "Sy"),
+     bonds = [(2, 7), (4, 9), (6,11),     # blocks 1↔2
+              (8,13), (10,15), (12,17),   # blocks 2↔3
+              (14,19), (16,21), (18,23)]),# blocks 3↔4
+]
+
+const COUPLING = Dict(("Sx","Sx") => Jx,
+                      ("Sy","Sy") => Jy,
+                      ("Sz","Sz") => Jz)
+
+
+
+# ---- Profiling ----
 const time_machine = TimerOutput()
 
 
+
+
+
 let
-  #-------------------------------------------------------------------------------------------------------
-  # Read in the ground-state wave function an MPS
-  #-------------------------------------------------------------------------------------------------------
-  file = h5open("../data/kitaev_honeycomb_kappa-0.4_Lx4_Ly3.h5", "r")
-  ψ_T = read(file, "psi", MPS)
-  # @show typeof(ψ_T)
-  sites = siteinds(ψ_T)
-  close(file)
+    #-------------------------------------------------------------------------------------------------------
+    # Read in the ground-state wave function an MPS
+    #-------------------------------------------------------------------------------------------------------
+    file = h5open("../data/kitaev_honeycomb_kappa-0.4_Lx4_Ly3.h5", "r")
+    ψ_T = read(file, "psi", MPS)
+    sites = siteinds(ψ_T)
+    close(file)
 
-  if length(ψ_T) != N
+    if length(ψ_T) != N
     error("Loaded MPS has length $(length(ψ_T)); expected N=$N for $(Nx_unit)×$(Ny_unit)×2 cluster")
-  end
-  @info "Loaded MPS" length=length(ψ_T) maxlinkdim=maxlinkdim(ψ_T)
-
-  
-  
-  # # Check the variance of the energy to see if the obtained state is close to an eigenstate of the Hamiltonian
-  # @timeit time_machine "compaute the variance" begin
-  #   H2 = inner(H, ψ_T, H, ψ_T)
-  #   E₀ = inner(ψ_T', H, ψ_T)
-  #   variance = H2 - E₀^2
-  # end
+    end
+    @info "Loaded MPS" length=length(ψ_T) maxlinkdim=maxlinkdim(ψ_T)
 
 
-  # println("\nGround-state energy: $E₀")
-  # println("\nVariance of the energy is $variance")
-  # println("\n")
-  
-  
-  #-------------------------------------------------------------------------------------------------------
-  # Set up gates for time evolution using 2nd-order Trotter decomposition
-  #-------------------------------------------------------------------------------------------------------
 
+    # # Check the variance of the energy to see if the obtained state is close to an eigenstate of the Hamiltonian
+    # @timeit time_machine "compaute the variance" begin
+    #   H2 = inner(H, ψ_T, H, ψ_T)
+    #   E₀ = inner(ψ_T', H, ψ_T)
+    #   variance = H2 - E₀^2
+    # end
+
+
+    # println("\nGround-state energy: $E₀")
+    # println("\nVariance of the energy is $variance")
+    # println("\n")
+  
+  
+  
+    #-------------------------------------------------------------------------------------------------------
+    # Set up gates for time evolution using 2nd-order Trotter decomposition
+    #-------------------------------------------------------------------------------------------------------
+    two_body_gates = build_two_body_gates(sites, two_body_gate_groups, COUPLING, dt)
+    append!(two_body_gates, reverse(two_body_gates))      # 2nd-order Trotter: apply gates in reverse order for the second half of the step
+    for step in 1:nsteps
+        ψ_T = apply(two_body_gates, ψ_T; cutoff=cutoff_tebd, maxdim=maxdim_tebd)
+        normalize!(ψ_T)
+    end
   
 
-  
+
   # """Construc the Kitaev Hamiltonian as an MPO using the OpSum interface"""
   # os = OpSum()
   
