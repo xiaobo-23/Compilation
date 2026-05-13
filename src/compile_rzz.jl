@@ -22,7 +22,7 @@ include("validation.jl")
 # ─── Set up parameters for multithreading and parallelization ────────────
 BLAS.set_num_threads(8)
 @info "BLAS configuration" vendor=BLAS.vendor() config=BLAS.get_config() threads=BLAS.get_num_threads()
-println()
+# println()
 
 
 
@@ -30,7 +30,7 @@ println()
 const model = (; Nx = 8, Ny = 3, Jx = 1.0, Jy = 1.0, Jz = 1.0, κ = -0.4, yperiodic = true)
 const N = model.Nx * model.Ny            # Total number of qubits
 const cutoff = 1e-4
-const nsweeps = 2
+const nsweeps = 1
 const default_iters = 25                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
 const stop_criteria = 1e-4               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
 
@@ -128,7 +128,7 @@ let
 	# single-qubit layer on every site.
 	# -----------------------------------------------------------------------------------------
 	# Configure the brickwall gate pattern by defining qubit indices
-	n_layers = 2
+	n_layers = 1
 	brickwall_block = [
 		[[i] for i in 1 : N],
 		[[i, i + 1] for i in 1 : 2 : N - 1],
@@ -243,7 +243,7 @@ let
 
 		# Compute the cost function after each sweep
 		cost_function[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
-		en = validate_circuit(circuit_gates, sites, state; Ny = model.Ny, Hamiltonian = H, cutoff=1e-10)
+		en = validate_circuit(circuit_gates, ψ₀; Ny = model.Ny, Hamiltonian = H, cutoff=1e-6)
 		energy_trace[iteration] = en.E_opt
 		plaquette_trace[iteration, :] = en.wp_opt
 		
