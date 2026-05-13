@@ -30,9 +30,13 @@ BLAS.set_num_threads(8)
 const model = (; Nx = 8, Ny = 3, Jx = 1.0, Jy = 1.0, Jz = 1.0, κ = -0.4, yperiodic = true)
 const N = model.Nx * model.Ny            # Total number of qubits
 const cutoff = 1e-4
-const nsweeps = 1
+const nsweeps = 50
 const default_iters = 25                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
 const stop_criteria = 1e-4               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
+const k_initial = 1
+const k_growth = 1
+const k_max = 3
+
 
 
 let
@@ -64,8 +68,6 @@ let
 	random_seed = 100
 	Random.seed!(random_seed)
 	state = fill("Up", N)
-	# state = ["Up" for n in 1:N]
-	# state = [isodd(n) ? "Up" : "Dn" for n in 1:N]
 	ψ₀    = MPS(sites, state)
 	# ψ₀	= random_mps(sites, state; linkdims = 8)  # bond-dimension-8 random MPS
 
@@ -136,11 +138,12 @@ let
 		[[i, i + 1] for i in 2 : 2 : N - 1],
 	]
 	input_pairs = repeat(brickwall_block, n_layers)	
-	push!(input_pairs, [[i] for i in 1 : N])
+	# push!(input_pairs, [[i] for i in 1 : N])
 
 	
 	# Randomly initialize the mixed single- and two-qubit gates in each layer.
-	circuit_gates = multi_layers_mixed_Rzz(input_pairs, sites)
+	circuit_gates = multi_layers_mixed_Rzz(input_pairs, sites; init = :random)
+
 	
 	# Check the consistency between the number of layers of gates and the number of layers of input pairs
 	@assert length(circuit_gates) == length(input_pairs) """
@@ -151,106 +154,131 @@ let
 	# -----------------------------------------------------------------------------------------
 	# Optimize the parameters of single-qubit & Rzz(θ) gates in the circuit layer by layer
 	# -----------------------------------------------------------------------------------------
-	cost_function = zeros(Float64, nsweeps)
-	energy_trace = zeros(Float64, nsweeps)
-	plaquette_trace = zeros(Float64, nsweeps, length(hexagonal_plaquettes(length(sites), model.Ny)))
+	cost_function = Float64[]
+	energy_trace = Float64[]
+	plaquette_trace = Vector{Float64}[]
 	optimization_trace = Float64[]
 	fidelity_trace = Float64[]
+	
+	
+	n_blocks = k_initial
 
 
-	for iteration in 1 : nsweeps 
-		println(repeat("-", 100))
-   		@printf "Sweep %d/%d\n" iteration nsweeps
-        println("\n")
+	# ── Outer stage loop ─────────────────────────────────────────────────────
+	while true 
+		for iteration in 1 : nsweeps 
+			println(repeat("-", 100))
+			@printf "Sweep %d/%d\n" iteration nsweeps
+			println("\n")
 
-		# Optimize each layer of the two-qubit gate in a forward sweeping order 
-		for layer_idx in 1 : length(circuit_gates)
-			optimization_gates = circuit_gates[layer_idx]
-			idx_pairs = input_pairs[layer_idx]
+			# Optimize each layer of the two-qubit gate in a forward sweeping order 
+			for layer_idx in 1 : length(circuit_gates)
+				optimization_gates = circuit_gates[layer_idx]
+				idx_pairs = input_pairs[layer_idx]
 
-			
-			# Compress the optimization circuit from the initial MPS side
-			ψ_left = deepcopy(ψ₀)
-			if layer_idx > 1
-				for idx in 1 : layer_idx - 1
-					ψ_left = apply(circuit_gates[idx], ψ_left; cutoff=cutoff)
-				end
-				normalize!(ψ_left)
-			end
-			# ψ_left = ψ_ket_collection[layer_idx]
-			
-			
-			# Compress the optimization circuit from the target MPS side 
-			ψ_right = deepcopy(ψ_T)
-			if layer_idx < length(circuit_gates)
-				for tmp_idx in length(circuit_gates):-1:layer_idx + 1
-					temporary_gates = deepcopy(circuit_gates[tmp_idx])
-					for gate_idx in 1 : length(temporary_gates)
-						temporary_gates[gate_idx] = dag(temporary_gates[gate_idx])
-						swapprime!(temporary_gates[gate_idx], 0 => 1)
+				
+				# Compress the optimization circuit from the initial MPS side
+				ψ_left = deepcopy(ψ₀)
+				if layer_idx > 1
+					for idx in 1 : layer_idx - 1
+						ψ_left = apply(circuit_gates[idx], ψ_left; cutoff=cutoff)
 					end
-					ψ_right = apply(temporary_gates, ψ_right; cutoff=cutoff)
+					normalize!(ψ_left)
 				end
-				normalize!(ψ_right)  
+				# ψ_left = ψ_ket_collection[layer_idx]
+				
+				
+				# Compress the optimization circuit from the target MPS side 
+				ψ_right = deepcopy(ψ_T)
+				if layer_idx < length(circuit_gates)
+					for tmp_idx in length(circuit_gates):-1:layer_idx + 1
+						temporary_gates = deepcopy(circuit_gates[tmp_idx])
+						for gate_idx in 1 : length(temporary_gates)
+							temporary_gates[gate_idx] = dag(temporary_gates[gate_idx])
+							swapprime!(temporary_gates[gate_idx], 0 => 1)
+						end
+						ψ_right = apply(temporary_gates, ψ_right; cutoff=cutoff)
+					end
+					normalize!(ψ_right)  
+				end
+				# ψ_right = ψ_bra_collection[layer_idx]
+				
+	
+				# Optimize all gates in the current layer by sweeping
+				fidelity₁ = fidelity₂ = 0
+				for iter_idx in 1:default_iters
+					# Update all gates from top to bottom
+					# println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: top-down sweeping")
+
+					for idx in 1:length(idx_pairs)
+						updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
+							update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
+						else
+							update_Rzz(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], idx_pairs[idx][2], sites, cutoff)
+						end
+						optimization_gates[idx] = updated_gate
+						append!(optimization_trace, tmp_trace)
+						append!(fidelity_trace, tmp_cost)
+					end
+					# println("\n")
+
+
+					# Update all gates from bottom to top
+					# println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: bottom-up sweeping")
+					for idx in length(idx_pairs):-1:1
+						updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
+							update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
+						else
+							idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
+							update_Rzz(ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, sites, cutoff)
+						end
+						optimization_gates[idx] = updated_gate
+						append!(optimization_trace, tmp_trace)
+						append!(fidelity_trace, tmp_cost)
+					end
+					# println("\n")
+
+					fidelity₂ = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
+					if iter_idx > 1 && abs(fidelity₂ - fidelity₁) < stop_criteria
+						println("The change of the cost function is smaller than the stopping criteria. Stop the optimization of gates at layer $(layer_idx).")
+						println([fidelity₁, fidelity₂, abs(fidelity₂ - fidelity₁)])
+						break
+					end
+					fidelity₁ = fidelity₂
+				end
 			end
-			# ψ_right = ψ_bra_collection[layer_idx]
+
+
+			# Compute the cost function after each sweep
+			push!(cost_function, compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff))
+			en = validate_circuit(circuit_gates, ψ₀; Ny = model.Ny, Hamiltonian = H, cutoff=1e-6)
+			push!(energy_trace, en.E_opt)
+			push!(plaquette_trace, en.wp_opt)
 			
- 
-			# Optimize all gates in the current layer by sweeping
-			fidelity₁ = fidelity₂ = 0
-			for iter_idx in 1:default_iters
-				# Update all gates from top to bottom
-				# println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: top-down sweeping")
-
-				for idx in 1:length(idx_pairs)
-					updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
-						update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
-					else
-						update_Rzz(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], idx_pairs[idx][2], sites, cutoff)
-					end
-					optimization_gates[idx] = updated_gate
-					append!(optimization_trace, tmp_trace)
-					append!(fidelity_trace, tmp_cost)
-				end
-				# println("\n")
-
-
-				# Update all gates from bottom to top
-				# println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: bottom-up sweeping")
-				for idx in length(idx_pairs):-1:1
-					updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
-						update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
-					else
-						idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
-						update_Rzz(ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, sites, cutoff)
-					end
-					optimization_gates[idx] = updated_gate
-					append!(optimization_trace, tmp_trace)
-					append!(fidelity_trace, tmp_cost)
-				end
-				# println("\n")
-
-				fidelity₂ = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
-				if iter_idx > 1 && abs(fidelity₂ - fidelity₁) < stop_criteria
-					println("The change of the cost function is smaller than the stopping criteria. Stop the optimization of gates at layer $(layer_idx).")
-					println([fidelity₁, fidelity₂, abs(fidelity₂ - fidelity₁)])
-					break
-				end
-				fidelity₁ = fidelity₂
-			end
+			println("\n")
+			@printf "──── sweep %d/%d done  Fidelity = %+.6f  Energy = %+.6f\n" iteration nsweeps cost_function[iteration] en.E_opt
+			println(repeat("-", 100), "\n")
 		end
 
+		@show n_blocks, k_max
+		if n_blocks >= k_max
+			println("Reached the maximum number of blocks. Stop the optimization.")
+			break
+		end	
 
-		# Compute the cost function after each sweep
-		cost_function[iteration] = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
-		en = validate_circuit(circuit_gates, ψ₀; Ny = model.Ny, Hamiltonian = H, cutoff=1e-6)
-		energy_trace[iteration] = en.E_opt
-		plaquette_trace[iteration, :] = en.wp_opt
-		
-		println("\n")
-		@printf "──── sweep %d/%d done  Fidelity = %+.6f  Energy = %+.6f\n" iteration nsweeps cost_function[iteration] en.E_opt
-		println(repeat("-", 100), "\n")
+		# Append k_growth more brickwall blocks, identity-initialized.
+		new_pairs = repeat(brickwall_block, k_growth)
+		if nblocks == k_max - 1
+			push!(new_pairs, [[i] for i in 1 : N])
+		end
+		new_gates = multi_layers_mixed_Rzz(new_pairs, sites; init = :identity)
+		append!(input_pairs,   new_pairs)
+		append!(circuit_gates, new_gates)
+		n_blocks += k_growth
+
+		@info "Grew circuit" n_blocks total_layers = length(input_pairs)
 	end
+
 	
 	# Sanity-check dumps — uncomment when verifying the optimization plumbing:
 	@show cost_function
@@ -279,7 +307,7 @@ let
 	# the hexagonal plaquette operators on both the compiled MPS and the target MPS, 
 	# and report the optimization history.
 	# -----------------------------------------------------------------------------------------
-	compiled = validate_circuit(circuit_gates, sites, state; Ny = model.Ny, Hamiltonian = H, cutoff = cutoff)
+	compiled = validate_circuit(circuit_gates, ψ₀; Ny = model.Ny, Hamiltonian = H, cutoff = cutoff)
 	target   = validate_reference(ψ_T;                       Ny = model.Ny, Hamiltonian = H)
 
 

@@ -132,7 +132,7 @@ end
 function single_layer_mixed_Rzz(input_pairs::Vector{Vector{Int64}}, input_sites; 
         init::Symbol = :random)
 
-    init ∈ (:random, :Rzz) || error("init must be :random or :identity, got $init")
+    init ∈ (:random, :identity) || error("init must be :random or :identity, got $init")
 	gates = ITensor[]
 
 	for pair in input_pairs
@@ -159,8 +159,9 @@ end
 
 
 # Function to generate multi-layers mixed single-qubit & Rzz gates as the initial unitaries
-function multi_layers_mixed_Rzz(pairs_array::Vector{Vector{Vector{Int64}}}, input_sites)
-	return [single_layer_mixed_Rzz(layer, input_sites; init) for layer in pairs_array]
+function multi_layers_mixed_Rzz(pairs_array::Vector{Vector{Vector{Int64}}}, 
+        input_sites; init::Symbol = :random )
+	return [single_layer_mixed_Rzz(layer, input_sites; init=init) for layer in pairs_array]
     
     # circuit_depth = length(pairs_array)
 	# output_gates = []
