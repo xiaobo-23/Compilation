@@ -160,7 +160,7 @@ end
 
 # Function to generate multi-layers mixed single-qubit & Rzz gates as the initial unitaries
 function multi_layers_mixed_Rzz(pairs_array::Vector{Vector{Vector{Int64}}}, 
-        input_sites; init::Symbol = :random )
+        input_sites; init::Symbol = :random)
 	return [single_layer_mixed_Rzz(layer, input_sites; init=init) for layer in pairs_array]
     
     # circuit_depth = length(pairs_array)
@@ -173,6 +173,42 @@ function multi_layers_mixed_Rzz(pairs_array::Vector{Vector{Vector{Int64}}},
  
 	# return output_gates
 end
+
+
+
+"""
+    layers_initialization(pairs_array, input_sites, init_info; index = length(init_info))
+        -> Vector{Vector{ITensor}}
+
+Build the first `index` layers of a mixed single-qubit + Rzz circuit, where
+each layer's initialization mode is read from `init_info[i]` (one of
+`:random` or `:identity`). Used by the adaptive-deepening compilation:
+the caller passes `index = n_active` for stage `n_active`.
+
+`length(pairs_array) ≥ index` and `length(init_info) ≥ index` are required.
+
+# Example
+    layers_info = [i ≤ 2 ? :random : :identity for i in 1:9]
+    gates = layers_initialization(input_pairs, sites, layers_info; index = 5)
+    # First 5 layers built: gates[1..2] random, gates[3..5] identity
+"""
+
+function layers_initialization(pairs_array::Vector{Vector{Vector{Int64}}}, 
+                                input_sites, 
+                                init_info::AbstractVector{Symbol};
+                                index::Int = length(init_info))
+    
+    @assert index ≤ length(pairs_array) "index ($index) > length(pairs_array) ($(length(pairs_array)))"
+    @assert index ≤ length(init_info)   "index ($index) > length(init_info) ($(length(init_info)))"
+
+    return [
+        single_layer_mixed_Rzz(pairs_array[i], input_sites; init = init_info[i])
+        for i in 1 : index
+    ]
+
+end
+
+
 
 
 """

@@ -33,10 +33,6 @@ const cutoff = 1e-4
 const nsweeps = 100
 const default_iters = 25                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
 const stop_criteria = 1e-4               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
-const k_initial = 1
-const k_growth = 1
-const k_max = 1
-
 
 
 let
@@ -100,7 +96,7 @@ let
 	# end
 
 	
-	# # Apply the projector and align the global phase to maximize Re⟨ψ_T | ψ₀⟩.
+	# Apply the projector and align the global phase to maximize Re⟨ψ_T | ψ₀⟩.
 	# ψ₀ = apply(projection, ψ₀; cutoff=cutoff)
 	# fidelity₀ = inner(ψ_T, ψ₀)
 	# ϕ_phase = angle(fidelity₀)
@@ -108,7 +104,7 @@ let
 	# fidelity₀_rotated = inner(ψ_T, ψ₀)	
 	
 
-	# # Diagnostics: bond dimensions, overlaps, and per-plaquette ⟨Wp⟩.
+	# Diagnostics: bond dimensions, overlaps, and per-plaquette ⟨Wp⟩.
 	# result_proj = measure_plaquettes(ψ₀, sites; Ny = 4)
 	# evals₀      = result_proj.wp
 	# @printf "  bond dimensions     : %s\n" linkdims(ψ₀)
@@ -130,34 +126,34 @@ let
 	# single-qubit layer on every site.
 	# -----------------------------------------------------------------------------------------
 	# Configure the brickwall gate pattern by defining qubit indices
-	n_layers = 5
+	n_repeat = 1
 	brickwall_block = [
 		[[i] for i in 1 : N],
 		[[i, i + 1] for i in 1 : 2 : N - 1],
 		[[i] for i in 2 : N - 1],
 		[[i, i + 1] for i in 2 : 2 : N - 1],
 	]
-	input_pairs = repeat(brickwall_block, n_layers)	
+	input_pairs = repeat(brickwall_block, n_repeat)
 	push!(input_pairs, [[i] for i in 1 : N])
-
-
-	incremental_brick_wall = [
-		[[i, i + 1] for i in 1 : 2 : N - 1],
-		[[i] for i in 2 : N - 1],
-		[[i, i + 1] for i in 2 : 2 : N - 1],
-		[[i] for i in 1 : N],
-	]
-
-
-	# Randomly initialize the mixed single- and two-qubit gates in each layer.
-	circuit_gates = multi_layers_mixed_Rzz(input_pairs, sites; init = :random)
+	n_layers = length(input_pairs)
 
 	
-	# Check the consistency between the number of layers of gates and the number of layers of input pairs
-	@assert length(circuit_gates) == length(input_pairs) """
-		Layer-count mismatch: got $(length(circuit_gates)) layers of gates for $(length(input_pairs)) layer specs. 
-	""" 
-	
+	# ── Per-layer initialization schedule ────────────────────────────────────
+	# The first `n_random` layers are initialized randomly; the rest start as
+	# identity so the adaptive-deepening loop can bring them into the active
+	# circuit one by one.
+	n_random    = 2
+	layers_info = [i ≤ n_random ? :random : :identity for i in 1 : n_layers]
+
+	@assert length(layers_info) == n_layers """
+		layers_info length ($(length(layers_info))) ≠ n_layers ($n_layers).
+	"""
+
+	# ── Initial circuit: just the random prefix ──────────────────────────────
+	circuit_gates = layers_initialization(input_pairs, sites, layers_info; index = n_random)
+	@assert length(circuit_gates) == n_random
+
+
 
 	# -----------------------------------------------------------------------------------------
 	# Optimize the parameters of single-qubit & Rzz(θ) gates in the circuit layer by layer
@@ -168,12 +164,15 @@ let
 	optimization_trace = Float64[]
 	fidelity_trace = Float64[]
 	
-	
-	n_blocks = k_initial
 
+	for n_active in n_random : n_layers		
+		# trained circuit (preserves all previous training).
+		if n_active > n_random
+			push!(circuit_gates,
+				single_layer_mixed_Rzz(input_pairs[n_active], sites;
+										init = layers_info[n_active]))
+		end
 
-	# ── Outer stage loop ─────────────────────────────────────────────────────
-	while true 
 		for iteration in 1 : nsweeps 
 			println(repeat("-", 100))
 			@printf "Sweep %d/%d\n" iteration nsweeps
@@ -257,41 +256,21 @@ let
 			end
 
 
-			# Compute the cost function after each sweep
-			push!(cost_function, compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff))
-			en = validate_circuit(circuit_gates, ψ₀; Ny = model.Ny, Hamiltonian = H, cutoff=1e-6)
-			push!(energy_trace, en.E_opt)
+			# Compute the cost function after each sweep — bind once, use for both push! and printf.
+			fidelity_sweep = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, 1e-6)
+			en             = validate_circuit(circuit_gates, ψ₀; Ny = model.Ny, Hamiltonian = H, cutoff = 1e-6)
+
+			push!(cost_function,   fidelity_sweep)
+			push!(energy_trace,    en.E_opt)
 			push!(plaquette_trace, en.wp_opt)
-			
-			println("\n")
-			@printf "──── sweep %d/%d done  Fidelity = %+.6f  Energy = %+.6f\n" iteration nsweeps cost_function[iteration] en.E_opt
+
+			println()
+			@printf "──── sweep %d/%d done  Fidelity = %+.6f  Energy = %+.6f\n" iteration nsweeps fidelity_sweep en.E_opt
 			println(repeat("-", 100), "\n")
 		end
-	
-		
-		@show n_blocks, k_max
-		if n_blocks >= k_max
-			println("Reached the maximum number of blocks. Stop the optimization.")
-			break
-		end	
-
-
-		# Append k_growth more brickwall blocks, identity-initialized.
-		new_pairs = repeat(incremental_brick_wall, k_growth)
-		@show new_pairs
-
-
-		new_gates = multi_layers_mixed_Rzz(new_pairs, sites; init = :identity)
-		append!(input_pairs,   new_pairs)
-		append!(circuit_gates, new_gates)
-		n_blocks += k_growth
-
-
-		@info "Grew circuit" n_blocks total_layers = length(input_pairs)
 	end
 
 
-	
 	# Sanity-check dumps — uncomment when verifying the optimization plumbing:
 	@show cost_function
 	@show energy_trace
@@ -302,15 +281,13 @@ let
 	# -----------------------------------------------------------------------------------------
 	# Save the optimization results in an HDF5 file for future analysis and visualization
 	# -----------------------------------------------------------------------------------------
-	output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(2 * n_layers + 1)_Rzz_random.h5"
+	output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(n_layers)_Rzz.h5"
 	h5open(output_filename, "w") do file
 		write(file, "cost_function", cost_function)
 		write(file, "energy_trace", energy_trace)
 		write(file, "plaquette_trace", plaquette_trace)
 		write(file, "optimization_trace", optimization_trace)
 		write(file, "fidelity_trace", fidelity_trace)
-		# write(file, "fidelity0", fidelity₀)
-		# write(file, "Wp_0", evals₀)
 	end
 
 
@@ -347,11 +324,11 @@ let
 
 
 
-	# Save the expectation values of the plaquette operators in an HDF5 file
-	h5open(output_filename, "r+") do file
-		write(file, "Wp_opt", compiled.wp_opt)
-		write(file, "Wp_target", target.wp_target)
-	end
+	# # Save the expectation values of the plaquette operators in an HDF5 file
+	# h5open(output_filename, "r+") do file
+	# 	write(file, "Wp_opt", compiled.wp_opt)
+	# 	write(file, "Wp_target", target.wp_target)
+	# end
 
 
   return
