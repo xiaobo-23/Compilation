@@ -30,7 +30,7 @@ BLAS.set_num_threads(8)
 const model = (; Nx = 8, Ny = 3, Jx = 1.0, Jy = 1.0, Jz = 1.0, κ = -0.4, yperiodic = true)
 const N = model.Nx * model.Ny            # Total number of qubits
 const cutoff = 1e-4
-const nsweeps = 100
+const nsweeps = 50
 const default_iters = 25                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
 const stop_criteria = 1e-4               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
 
@@ -126,41 +126,39 @@ let
 	# single-qubit layer on every site.
 	# -----------------------------------------------------------------------------------------
 	# Configure the brickwall gate pattern of Rzz(θ) gates
-	n_repeat = 2
+	n_repeat = 6
 	brickwall_block = [
 		[[i, i + 1] for i in 1 : 2 : N - 1],
 		[[i, i + 1] for i in 2 : 2 : N - 1],
 	]
-	input_pairs = repeat(brickwall_block, n_repeat)
-	n_layers = length(input_pairs)
+	rzz_input_layers = repeat(brickwall_block, n_repeat)
+	initial_layers = length(rzz_input_layers)
 
 
 	
 	# Helper to expand one Rzz input layer into 3 circuit sublayers
-	# Generates the parallel `input_pairs` entries (so the dispatch in the
-	# optimization loop can still tell single-qubit from Rzz gates).
-	function build_dressed_block(rzz_pairs, sites)
-		front, rzz, back = random_rzz_layer(rzz_pairs, sites)
+	function build_dressed_block(rzz_pairs, sites; single_qubit_init = :random, rzz_init = :random)
+		front, rzz, back = dressed_rzz_layer(rzz_pairs, sites; single_qubit_init=single_qubit_init, rzz_init=rzz_init)
 		sq_pairs = [[k] for pair in rzz_pairs for k in pair] 
 		return [
 			(sq_pairs, front),
 			(rzz_pairs, rzz),
-
+			(sq_pairs, back),
 		]
 	end
 
 
-	function expand_dressed_block(rzz_pairs, sites; init = :random)
-		front, rzz, back = dressed_rzz_layer(rzz_pairs, sites; init)
-		sq_pairs = [[k] for pair in rzz_pairs for k in pair] 
-		return [
-			(sq_pairs, front),
-			(rzz_pairs, rzz),
-
-		]
+	# Build the initial circuit
+	input_pairs   = Vector{Vector{Int}}[]
+	circuit_gates = Vector{ITensor}[]
+	for k in 1 : initial_layers
+		for (pairs, gates) in build_dressed_block(rzz_input_layers[k], sites; single_qubit_init = :random, rzz_init = :random)
+			push!(input_pairs,   pairs)
+			push!(circuit_gates, gates)
+		end
 	end
 
-
+	
 
 	# -----------------------------------------------------------------------------------------
 	# Optimize the parameters of single-qubit & Rzz(θ) gates in the circuit layer by layer
@@ -268,7 +266,7 @@ let
 	end
 
 
-	
+
 	# # ── Per-layer initialization schedule ────────────────────────────────────
 	# # The first `n_random` layers are initialized randomly; the rest start as
 	# # identity so the adaptive-deepening loop can bring them into the active

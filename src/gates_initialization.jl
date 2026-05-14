@@ -263,8 +263,8 @@ The dagger relation is enforced *only at initialization*; subsequent optimizatio
 treats every gate independently.
 """
 function dressed_rzz_layer(rzz_pairs::Vector{Vector{Int}}, input_sites;
-                           init::Symbol = :random)
-    init ∈ (:random, :identity) || error("init must be :random or :identity, got $init")
+                           single_qubit_init::Symbol = :random, rzz_init::Symbol = :random)
+    single_qubit_init ∈ (:random, :identity) || error("single_qubit_init must be :random or :identity, got $single_qubit_init")
 
     front_gates = ITensor[]
     rzz_gates   = ITensor[]
@@ -275,7 +275,7 @@ function dressed_rzz_layer(rzz_pairs::Vector{Vector{Int}}, input_sites;
         s_i, s_j = input_sites[i], input_sites[j]
 
         # Build u_i and u_j as random single-qubit unitaries via SVD projection.
-        u_i = if init === :random
+        u_i = if single_qubit_init === :random
             G = randomITensor(s_i', s_i)
             U, S, V = svd(G, (s_i'))
             U * delta(inds(S)[1], inds(S)[2]) * dag(V)
@@ -283,7 +283,7 @@ function dressed_rzz_layer(rzz_pairs::Vector{Vector{Int}}, input_sites;
             op("Id", s_i)
         end
 
-        u_j = if init === :random
+        u_j = if single_qubit_init === :random
             G = randomITensor(s_j', s_j)
             U, S, V = svd(G, (s_j'))
             U * delta(inds(S)[1], inds(S)[2]) * dag(V)
@@ -296,50 +296,12 @@ function dressed_rzz_layer(rzz_pairs::Vector{Vector{Int}}, input_sites;
         push!(front_gates, u_j)
 
         # Middle Rzz at angle 0 — identity at initialization.
-        push!(rzz_gates, op(input_sites, "Rzz", i, j; ϕ = 0.0))
-
-        # Back dressing — daggers of the front. (swapprime swaps the
-        # primed/unprimed indices so the operator acts as u^†.)
-        push!(back_gates, swapprime(dag(u_i), 0 => 1))
-        push!(back_gates, swapprime(dag(u_j), 0 => 1))
-    end
-
-    return front_gates, rzz_gates, back_gates
-end
-
-
-
-
-function random_rzz_layer(rzz_pairs::Vector{Vector{Int}}, input_sites)
-
-    front_gates = ITensor[]
-    rzz_gates   = ITensor[]
-    back_gates  = ITensor[]
-
-    for pair in rzz_pairs
-        i, j = pair[1], pair[2]
-        s_i, s_j = input_sites[i], input_sites[j]
-
-        # Build u_i and u_j as random single-qubit unitaries via SVD projection.
-        G_i = randomITensor(s_i', s_i)
-        U, S, V = svd(G_i, (s_i'))
-        u_i = U * delta(inds(S)[1], inds(S)[2]) * dag(V)
-       
-
-        G_j = randomITensor(s_j', s_j)
-        U, S, V = svd(G_j, (s_j'))
-        u_j = U * delta(inds(S)[1], inds(S)[2]) * dag(V)
-
-
-        # Front dressing.
-        push!(front_gates, u_i)
-        push!(front_gates, u_j)
-
-
-        # Middle Rzz at angle θ — random at initialization.
-        ϕ = π/2 * rand()
-		G_rzz = op(input_sites, "Rzz", pair[1], pair[2]; ϕ=ϕ)
-        push!(rzz_gates, G_rzz)
+        if rzz_init === :random
+            ϕ = π/2 * rand()
+        elseif rzz_init === :identity
+            ϕ = 0.0
+        end
+        push!(rzz_gates, op(input_sites, "Rzz", i, j; ϕ = ϕ))
 
 
         # Back dressing — daggers of the front. (swapprime swaps the
