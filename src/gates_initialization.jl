@@ -128,6 +128,7 @@ end
 
 
 
+
 # Function to generate a single-layer of mixed single-qubit & Rzz gates as the initial unitaries
 function single_layer_mixed_Rzz(input_pairs::Vector{Vector{Int64}}, input_sites; 
         init::Symbol = :random)
@@ -143,10 +144,20 @@ function single_layer_mixed_Rzz(input_pairs::Vector{Vector{Int64}}, input_sites;
                 U, S, V = svd(G_opt, (s₁'))
                 U * delta(inds(S)[1], inds(S)[2]) * dag(V)
             else
-                op("Id", s₁)
+                # op("Id", s₁)
+                
+                # Add small random perturbations to the identity gate when init is :identity
+                ϵ = 0.01
+                G_opt = op("Id", s₁) + ϵ * randomITensor(ComplexF64, s₁', s₁)
+                U, S, V = svd(G_opt, (s₁'))
+                U * delta(inds(S)[1], inds(S)[2]) * dag(V)
             end
 		elseif length(pair) == 2
-			ϕ = init === :random ? π/2 * rand() : 0.0
+			# ϕ = init === :random ? π/2 * rand() : 0.0
+            
+            # Add small random perturbations to the Rzz gate when init is :identity 
+            ϵ = 0.01
+            ϕ = init === :random ? π/2 * rand() : ϵ * rand()
 			G = op(input_sites, "Rzz", pair[1], pair[2]; ϕ=ϕ)
 		end
 
@@ -155,6 +166,7 @@ function single_layer_mixed_Rzz(input_pairs::Vector{Vector{Int64}}, input_sites;
 
 	return gates
 end 
+
 
 
 

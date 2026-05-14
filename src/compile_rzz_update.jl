@@ -138,12 +138,15 @@ let
 	n_layers = length(input_pairs)
 
 	
+	
+	
 	# ── Per-layer initialization schedule ────────────────────────────────────
 	# The first `n_random` layers are initialized randomly; the rest start as
 	# identity so the adaptive-deepening loop can bring them into the active
 	# circuit one by one.
 	n_random    = 2
-	layers_info = [i ≤ n_random ? :random : :identity for i in 1 : n_layers]
+	# layers_info = [i ≤ n_random ? :random : :identity for i in 1 : n_layers]
+	layers_info = [:random for i in 1 : n_layers] 
 
 	@assert length(layers_info) == n_layers """
 		layers_info length ($(length(layers_info))) ≠ n_layers ($n_layers).
@@ -281,11 +284,11 @@ let
 	# -----------------------------------------------------------------------------------------
 	# Save the optimization results in an HDF5 file for future analysis and visualization
 	# -----------------------------------------------------------------------------------------
-	output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(n_layers)_Rzz.h5"
+	output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(n_layers)_Rzz_dynamical_random.h5"
 	h5open(output_filename, "w") do file
 		write(file, "cost_function", cost_function)
 		write(file, "energy_trace", energy_trace)
-		write(file, "plaquette_trace", plaquette_trace)
+		# write(file, "plaquette_trace", plaquette_trace)
 		write(file, "optimization_trace", optimization_trace)
 		write(file, "fidelity_trace", fidelity_trace)
 	end
