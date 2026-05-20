@@ -30,9 +30,10 @@ BLAS.set_num_threads(8)
 const model = (; Nx = 8, Ny = 3, Jx = 1.0, Jy = 1.0, Jz = 1.0, κ = -0.4, yperiodic = true)
 const N = model.Nx * model.Ny            # Total number of qubits
 const cutoff = 1e-4
-const nsweeps = 50
+const nsweeps = 200
 const default_iters = 25                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
 const stop_criteria = 1e-4               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
+const per_stage_stop_criteria = 1e-6     
 
 
 let
@@ -165,7 +166,8 @@ let
 	plaquette_trace = Vector{Float64}[]
 	optimization_trace = Float64[]
 	fidelity_trace = Float64[]
-	
+	stage_starts = Int[]
+
 	
 	for n_active in initial_layers : total_layers
 		if n_active > initial_layers
@@ -175,9 +177,13 @@ let
 				push!(circuit_gates, gates)
 			end
 		end
-		@show length(input_pairs)
+
+		# Record the sweep at which this stage starts 
+		push!(stage_starts, length(cost_function) + 1)
 
 
+		# Tracking per-stage early-stop to avoid over-optimizing each layer and getting stuck in local minima
+		fidelity_prev_sweep = -Inf
 		for iteration in 1 : nsweeps 
 			println(repeat("-", 100))
 			@printf "Sweep %d/%d\n" iteration nsweeps
@@ -272,6 +278,15 @@ let
 			println()
 			@printf "──── sweep %d/%d done  Fidelity = %+.6f  Energy = %+.6f\n" iteration nsweeps fidelity_sweep en.E_opt
 			println(repeat("-", 100), "\n")
+
+
+			# Per-stage early stop 
+			if iteration > 1 && abs(fidelity_sweep - fidelity_prev_sweep) < per_stage_stop_criteria
+				@info "Per-stage convergence reached; advancing to next stage" sweep = iteration\ 
+				ΔF = abs(fidelity_sweep - fidelity_prev_sweep) threshold = per_stage_stop_criteria
+           		break
+			end
+			fidelity_prev_sweep = fidelity_sweep
 		end
 	end
 
@@ -283,18 +298,18 @@ let
 	# @show (optimization_trace - fidelity_trace)[1 : 20]
 
 
-
 	# -----------------------------------------------------------------------------------------
 	# Save the optimization results in an HDF5 file for future analysis and visualization
 	# -----------------------------------------------------------------------------------------
-	# output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(n_layers)_Rzz_dynamical_random.h5"
-	# h5open(output_filename, "w") do file
-	# 	write(file, "cost_function", cost_function)
-	# 	write(file, "energy_trace", energy_trace)
-	# 	# write(file, "plaquette_trace", plaquette_trace)
-	# 	write(file, "optimization_trace", optimization_trace)
-	# 	write(file, "fidelity_trace", fidelity_trace)
-	# end
+	output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(n_total)_Rzz_test.h5"
+	h5open(output_filename, "w") do file
+		write(file, "cost_function", cost_function)
+		write(file, "energy_trace", energy_trace)
+		write(file, "plaquette_trace", Matrix(reduce(hcat, plaquette_trace)'))
+		write(file, "optimization_trace", optimization_trace)
+		write(file, "fidelity_trace", fidelity_trace)
+		write(file, "stage_starts", stage_starts)
+	end
 
 
 	# -----------------------------------------------------------------------------------------
@@ -330,11 +345,11 @@ let
 
 
 
-	# # Save the expectation values of the plaquette operators in an HDF5 file
-	# h5open(output_filename, "r+") do file
-	# 	write(file, "Wp_opt", compiled.wp_opt)
-	# 	write(file, "Wp_target", target.wp_target)
-	# end
+	# Save the expectation values of the plaquette operators in an HDF5 file
+	h5open(output_filename, "r+") do file
+		write(file, "Wp_opt", compiled.wp_opt)
+		write(file, "Wp_target", target.wp_target)
+	end
 
 
   return
