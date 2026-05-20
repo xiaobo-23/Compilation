@@ -118,22 +118,19 @@ let
 	# Build the variational brickwall ansatz used to compile the target MPS.
 	#
 	# Each repeating block has four sublayers:
-	#   1. single-qubit gates on all sites
-	#   2. two-qubit gates on odd bonds  (i, i+1), i = 1, 3, 5, …
-	#   3. single-qubit gates on interior sites 2:N-1
-	#   4. two-qubit gates on even bonds (i, i+1), i = 2, 4, 6, …
-	# The block is repeated `n_layers` times and capped with a final
-	# single-qubit layer on every site.
+	#   1. two-qubit gates on odd bonds  (i, i+1), i = 1, 3, 5, …
+	#   2. two-qubit gates on even bonds (i, i+1), i = 2, 4, 6, …
 	# -----------------------------------------------------------------------------------------
 	# Configure the brickwall gate pattern of Rzz(θ) gates
-	n_repeat = 6
+	n_initial = 1
+	n_total   = 2
 	brickwall_block = [
 		[[i, i + 1] for i in 1 : 2 : N - 1],
 		[[i, i + 1] for i in 2 : 2 : N - 1],
 	]
-	rzz_input_layers = repeat(brickwall_block, n_repeat)
-	initial_layers = length(rzz_input_layers)
-
+	rzz_input_layers = repeat(brickwall_block, n_total)
+	initial_layers = length(brickwall_block) * n_initial
+	total_layers = length(rzz_input_layers)
 
 	
 	# Helper to expand one Rzz input layer into 3 circuit sublayers
@@ -169,231 +166,120 @@ let
 	optimization_trace = Float64[]
 	fidelity_trace = Float64[]
 	
-	for iteration in 1 : nsweeps 
-		println(repeat("-", 100))
-		@printf "Sweep %d/%d\n" iteration nsweeps
-		println("\n")
-
-		# Optimize each layer of the two-qubit gate in a forward sweeping order 
-		for layer_idx in 1 : length(circuit_gates)
-			optimization_gates = circuit_gates[layer_idx]
-			idx_pairs = input_pairs[layer_idx]
-
-			
-			# Compress the optimization circuit from the initial MPS side
-			ψ_left = deepcopy(ψ₀)
-			if layer_idx > 1
-				for idx in 1 : layer_idx - 1
-					ψ_left = apply(circuit_gates[idx], ψ_left; cutoff=cutoff)
-				end
-				normalize!(ψ_left)
-			end
-			# ψ_left = ψ_ket_collection[layer_idx]
-			
-			
-			# Compress the optimization circuit from the target MPS side 
-			ψ_right = deepcopy(ψ_T)
-			if layer_idx < length(circuit_gates)
-				for tmp_idx in length(circuit_gates):-1:layer_idx + 1
-					temporary_gates = deepcopy(circuit_gates[tmp_idx])
-					for gate_idx in 1 : length(temporary_gates)
-						temporary_gates[gate_idx] = dag(temporary_gates[gate_idx])
-						swapprime!(temporary_gates[gate_idx], 0 => 1)
-					end
-					ψ_right = apply(temporary_gates, ψ_right; cutoff=cutoff)
-				end
-				normalize!(ψ_right)  
-			end
-			# ψ_right = ψ_bra_collection[layer_idx]
-			
-
-			# Optimize all gates in the current layer by sweeping
-			fidelity₁ = fidelity₂ = 0
-			for iter_idx in 1:default_iters
-				# Update all gates from top to bottom
-				# println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: top-down sweeping")
-
-				for idx in 1:length(idx_pairs)
-					updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
-						update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
-					else
-						update_Rzz(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], idx_pairs[idx][2], sites, cutoff)
-					end
-					optimization_gates[idx] = updated_gate
-					append!(optimization_trace, tmp_trace)
-					append!(fidelity_trace, tmp_cost)
-				end
-				# println("\n")
-
-
-				# Update all gates from bottom to top
-				# println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: bottom-up sweeping")
-				for idx in length(idx_pairs):-1:1
-					updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
-						update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
-					else
-						idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
-						update_Rzz(ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, sites, cutoff)
-					end
-					optimization_gates[idx] = updated_gate
-					append!(optimization_trace, tmp_trace)
-					append!(fidelity_trace, tmp_cost)
-				end
-				# println("\n")
-
-				fidelity₂ = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
-				if iter_idx > 1 && abs(fidelity₂ - fidelity₁) < stop_criteria
-					println("The change of the cost function is smaller than the stopping criteria. Stop the optimization of gates at layer $(layer_idx).")
-					println([fidelity₁, fidelity₂, abs(fidelity₂ - fidelity₁)])
-					break
-				end
-				fidelity₁ = fidelity₂
+	
+	for n_active in initial_layers : total_layers
+		if n_active > initial_layers
+			for (pairs, gates) in build_dressed_block(rzz_input_layers[n_active], sites; 
+				single_qubit_init = :random, rzz_init = :identity)
+				push!(input_pairs,   pairs)
+				push!(circuit_gates, gates)
 			end
 		end
+		@show length(input_pairs)
 
 
-		# Compute the cost function after each sweep — bind once, use for both push! and printf.
-		fidelity_sweep = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, 1e-6)
-		en             = validate_circuit(circuit_gates, ψ₀; Ny = model.Ny, Hamiltonian = H, cutoff = 1e-6)
+		for iteration in 1 : nsweeps 
+			println(repeat("-", 100))
+			@printf "Sweep %d/%d\n" iteration nsweeps
+			println("\n")
 
-		push!(cost_function,   fidelity_sweep)
-		push!(energy_trace,    en.E_opt)
-		push!(plaquette_trace, en.wp_opt)
+			# Optimize each layer of the two-qubit gate in a forward sweeping order 
+			for layer_idx in 1 : length(circuit_gates)
+				optimization_gates = circuit_gates[layer_idx]
+				idx_pairs = input_pairs[layer_idx]
 
-		println()
-		@printf "──── sweep %d/%d done  Fidelity = %+.6f  Energy = %+.6f\n" iteration nsweeps fidelity_sweep en.E_opt
-		println(repeat("-", 100), "\n")
+				
+				# Compress the optimization circuit from the initial MPS side
+				ψ_left = deepcopy(ψ₀)
+				if layer_idx > 1
+					for idx in 1 : layer_idx - 1
+						ψ_left = apply(circuit_gates[idx], ψ_left; cutoff=cutoff)
+					end
+					normalize!(ψ_left)
+				end
+				# ψ_left = ψ_ket_collection[layer_idx]
+				
+				
+				# Compress the optimization circuit from the target MPS side 
+				ψ_right = deepcopy(ψ_T)
+				if layer_idx < length(circuit_gates)
+					for tmp_idx in length(circuit_gates):-1:layer_idx + 1
+						temporary_gates = deepcopy(circuit_gates[tmp_idx])
+						for gate_idx in 1 : length(temporary_gates)
+							temporary_gates[gate_idx] = dag(temporary_gates[gate_idx])
+							swapprime!(temporary_gates[gate_idx], 0 => 1)
+						end
+						ψ_right = apply(temporary_gates, ψ_right; cutoff=cutoff)
+					end
+					normalize!(ψ_right)  
+				end
+				# ψ_right = ψ_bra_collection[layer_idx]
+				
+
+				# Optimize all gates in the current layer by sweeping
+				fidelity₁ = fidelity₂ = 0
+				for iter_idx in 1:default_iters
+					# Update all gates from top to bottom
+					# println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: top-down sweeping")
+
+					for idx in 1:length(idx_pairs)
+						updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
+							update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
+						else
+							update_Rzz(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], idx_pairs[idx][2], sites, cutoff)
+						end
+						optimization_gates[idx] = updated_gate
+						append!(optimization_trace, tmp_trace)
+						append!(fidelity_trace, tmp_cost)
+					end
+					# println("\n")
+
+
+					# Update all gates from bottom to top
+					# println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: bottom-up sweeping")
+					for idx in length(idx_pairs):-1:1
+						updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
+							update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
+						else
+							idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
+							update_Rzz(ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, sites, cutoff)
+						end
+						optimization_gates[idx] = updated_gate
+						append!(optimization_trace, tmp_trace)
+						append!(fidelity_trace, tmp_cost)
+					end
+					# println("\n")
+
+					fidelity₂ = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
+					if iter_idx > 1 && abs(fidelity₂ - fidelity₁) < stop_criteria
+						println("The change of the cost function is smaller than the stopping criteria. Stop the optimization of gates at layer $(layer_idx).")
+						println([fidelity₁, fidelity₂, abs(fidelity₂ - fidelity₁)])
+						break
+					end
+					fidelity₁ = fidelity₂
+				end
+			end
+
+
+			# Compute the cost function after each sweep — bind once, use for both push! and printf.
+			fidelity_sweep = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, 1e-6)
+			en             = validate_circuit(circuit_gates, ψ₀; Ny = model.Ny, Hamiltonian = H, cutoff = 1e-6)
+
+			push!(cost_function,   fidelity_sweep)
+			push!(energy_trace,    en.E_opt)
+			push!(plaquette_trace, en.wp_opt)
+
+			println()
+			@printf "──── sweep %d/%d done  Fidelity = %+.6f  Energy = %+.6f\n" iteration nsweeps fidelity_sweep en.E_opt
+			println(repeat("-", 100), "\n")
+		end
 	end
 
 
 
-	# # ── Per-layer initialization schedule ────────────────────────────────────
-	# # The first `n_random` layers are initialized randomly; the rest start as
-	# # identity so the adaptive-deepening loop can bring them into the active
-	# # circuit one by one.
-	# n_random    = 2
-	# # layers_info = [i ≤ n_random ? :random : :identity for i in 1 : n_layers]
-	# layers_info = [:random for i in 1 : n_layers] 
-
-	# @assert length(layers_info) == n_layers """
-	# 	layers_info length ($(length(layers_info))) ≠ n_layers ($n_layers).
-	# """
-
-	# # ── Initial circuit: just the random prefix ──────────────────────────────
-	# circuit_gates = layers_initialization(input_pairs, sites, layers_info; index = n_random)
-	# @assert length(circuit_gates) == n_random
-
-
-
-	# for n_active in n_random : n_layers		
-	# 	# trained circuit (preserves all previous training).
-	# 	if n_active > n_random
-	# 		push!(circuit_gates,
-	# 			single_layer_mixed_Rzz(input_pairs[n_active], sites;
-	# 									init = layers_info[n_active]))
-	# 	end
-
-	# 	for iteration in 1 : nsweeps 
-	# 		println(repeat("-", 100))
-	# 		@printf "Sweep %d/%d\n" iteration nsweeps
-	# 		println("\n")
-
-	# 		# Optimize each layer of the two-qubit gate in a forward sweeping order 
-	# 		for layer_idx in 1 : length(circuit_gates)
-	# 			optimization_gates = circuit_gates[layer_idx]
-	# 			idx_pairs = input_pairs[layer_idx]
-
-				
-	# 			# Compress the optimization circuit from the initial MPS side
-	# 			ψ_left = deepcopy(ψ₀)
-	# 			if layer_idx > 1
-	# 				for idx in 1 : layer_idx - 1
-	# 					ψ_left = apply(circuit_gates[idx], ψ_left; cutoff=cutoff)
-	# 				end
-	# 				normalize!(ψ_left)
-	# 			end
-	# 			# ψ_left = ψ_ket_collection[layer_idx]
-				
-				
-	# 			# Compress the optimization circuit from the target MPS side 
-	# 			ψ_right = deepcopy(ψ_T)
-	# 			if layer_idx < length(circuit_gates)
-	# 				for tmp_idx in length(circuit_gates):-1:layer_idx + 1
-	# 					temporary_gates = deepcopy(circuit_gates[tmp_idx])
-	# 					for gate_idx in 1 : length(temporary_gates)
-	# 						temporary_gates[gate_idx] = dag(temporary_gates[gate_idx])
-	# 						swapprime!(temporary_gates[gate_idx], 0 => 1)
-	# 					end
-	# 					ψ_right = apply(temporary_gates, ψ_right; cutoff=cutoff)
-	# 				end
-	# 				normalize!(ψ_right)  
-	# 			end
-	# 			# ψ_right = ψ_bra_collection[layer_idx]
-				
-	
-	# 			# Optimize all gates in the current layer by sweeping
-	# 			fidelity₁ = fidelity₂ = 0
-	# 			for iter_idx in 1:default_iters
-	# 				# Update all gates from top to bottom
-	# 				# println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: top-down sweeping")
-
-	# 				for idx in 1:length(idx_pairs)
-	# 					updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
-	# 						update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
-	# 					else
-	# 						update_Rzz(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], idx_pairs[idx][2], sites, cutoff)
-	# 					end
-	# 					optimization_gates[idx] = updated_gate
-	# 					append!(optimization_trace, tmp_trace)
-	# 					append!(fidelity_trace, tmp_cost)
-	# 				end
-	# 				# println("\n")
-
-
-	# 				# Update all gates from bottom to top
-	# 				# println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: bottom-up sweeping")
-	# 				for idx in length(idx_pairs):-1:1
-	# 					updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
-	# 						update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
-	# 					else
-	# 						idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
-	# 						update_Rzz(ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, sites, cutoff)
-	# 					end
-	# 					optimization_gates[idx] = updated_gate
-	# 					append!(optimization_trace, tmp_trace)
-	# 					append!(fidelity_trace, tmp_cost)
-	# 				end
-	# 				# println("\n")
-
-	# 				fidelity₂ = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
-	# 				if iter_idx > 1 && abs(fidelity₂ - fidelity₁) < stop_criteria
-	# 					println("The change of the cost function is smaller than the stopping criteria. Stop the optimization of gates at layer $(layer_idx).")
-	# 					println([fidelity₁, fidelity₂, abs(fidelity₂ - fidelity₁)])
-	# 					break
-	# 				end
-	# 				fidelity₁ = fidelity₂
-	# 			end
-	# 		end
-
-
-	# 		# Compute the cost function after each sweep — bind once, use for both push! and printf.
-	# 		fidelity_sweep = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, 1e-6)
-	# 		en             = validate_circuit(circuit_gates, ψ₀; Ny = model.Ny, Hamiltonian = H, cutoff = 1e-6)
-
-	# 		push!(cost_function,   fidelity_sweep)
-	# 		push!(energy_trace,    en.E_opt)
-	# 		push!(plaquette_trace, en.wp_opt)
-
-	# 		println()
-	# 		@printf "──── sweep %d/%d done  Fidelity = %+.6f  Energy = %+.6f\n" iteration nsweeps fidelity_sweep en.E_opt
-	# 		println(repeat("-", 100), "\n")
-	# 	end
-	# end
-
-
-	# Sanity-check dumps — uncomment when verifying the optimization plumbing:
-	@show cost_function
-	@show energy_trace
+	# Verifying the optimization results: report the cost function and energy trace during the optimization process.
+	# @show cost_function
+	# @show energy_trace
 	# @show (optimization_trace - fidelity_trace)[1 : 20]
 
 
