@@ -163,13 +163,13 @@ don't need to undo the old gate via Rzz†.
 function refresh_intermediate!(ψ_intermediate, new_gate, ψ_left, idx_pairs, k;
                                 cutoff::Real = 1e-8)
     if length(idx_pairs[k]) == 1
-        # ── Single-qubit gate ────────────────────────────────────────────
+        # Single-qubit gate 
         i = idx_pairs[k][1]
         ψ_intermediate[i] = noprime(new_gate * ψ_left[i])
     else
         i, j = idx_pairs[k][1], idx_pairs[k][2]
         if abs(i - j) == 1
-            # ── Nearest-neighbor Rzz ─────────────────────────────────────
+            # Nearest-neighbor Rzz 
             T_new = noprime(new_gate * ψ_left[i] * ψ_left[j])
             
             s_i        = siteind(ψ_left, i)

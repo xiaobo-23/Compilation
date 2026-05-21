@@ -2,14 +2,15 @@
 # Functions used to update a target two-qubit gate within a set of two-qubit gates
 # Use Evenbly-Vidal algorithms to compute the environment tensor and update the target gate
 
-using ITensors
-using ITensorMPS
+using ITensors, ITensorMPS
 using MKL
 using LinearAlgebra
 using Random
 using Printf
 
 include("compute_cost_function.jl")
+include("cached_environment.jl")
+
 
 
 const PauliX = ComplexF64[0  1;  1  0]
@@ -21,7 +22,6 @@ const PAULI_PRODUCTS = Dict{String, Matrix{ComplexF64}}(
     "Ryy" => kron(PauliY, PauliY),
     "Rzz" => kron(PauliZ, PauliZ),
 )
-
 
 
 # """
@@ -164,8 +164,7 @@ function update_Rzz_from_env(E_T, sites, i, j)
     C_col    = combiner(s_j',  s_i')             # primed (bra) side
     matrix_T = matrix(C_row * E_T * C_col, combinedind(C_row), combinedind(C_col))
 
-    coeff_A = imag(sum(matrix_T .* PAULI_PRODUCTS["Rzz"]))  
-    coeff_B = real(tr(matrix_T))                             
+    
     # Update the input angle based on the coefficients 
 	# One of them should give the maximum value and the other gives the minimum value
 	coeff_A = imag(tr(matrix_T * P))

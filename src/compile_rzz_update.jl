@@ -30,7 +30,7 @@ BLAS.set_num_threads(8)
 const model = (; Nx = 8, Ny = 3, Jx = 1.0, Jy = 1.0, Jz = 1.0, κ = -0.4, yperiodic = true)
 const N = model.Nx * model.Ny            # Total number of qubits
 const cutoff = 1e-4
-const nsweeps = 200
+const nsweeps = 1
 const default_iters = 25                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
 const stop_criteria = 1e-4               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
 const per_stage_stop_criteria = 1e-6     
@@ -124,7 +124,7 @@ let
 	# -----------------------------------------------------------------------------------------
 	# Configure the brickwall gate pattern of Rzz(θ) gates
 	n_initial = 1
-	n_total   = 2
+	n_total   = 1
 	brickwall_block = [
 		[[i, i + 1] for i in 1 : 2 : N - 1],
 		[[i, i + 1] for i in 2 : 2 : N - 1],
@@ -222,48 +222,82 @@ let
 				# ψ_right = ψ_bra_collection[layer_idx]
 				
 
-				# Optimize all gates in the current layer by sweeping
-				fidelity₁ = fidelity₂ = 0
-				for iter_idx in 1:default_iters
-					# Update all gates from top to bottom
-					# println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: top-down sweeping")
+				# Precompute the left and right environments for each gate
+				println("")
+				@show idx_pairs
+				ups = ITensor[]
+				dns = ITensor[]
+				ψ_intermediate = apply(optimization_gates, ψ_left; cutoff = 1e-8)
 
-					for idx in 1:length(idx_pairs)
-						updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
-							update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
-						else
-							update_Rzz(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], idx_pairs[idx][2], sites, cutoff)
-						end
-						optimization_gates[idx] = updated_gate
-						append!(optimization_trace, tmp_trace)
-						append!(fidelity_trace, tmp_cost)
+				# Left environments: ups[k] = contraction of sites 1..(first qubit of gate k - 1)
+				for (tmp_idx, tmp_pair) in enumerate(idx_pairs)
+					tmp_u = ITensor(1)
+					for i in 1 : tmp_pair[1] - 1
+						tmp_u *= ψ_intermediate[i]
+						tmp_u *= dag(ψ_right[i])
 					end
-					# println("\n")
-
-
-					# Update all gates from bottom to top
-					# println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: bottom-up sweeping")
-					for idx in length(idx_pairs):-1:1
-						updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
-							update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
-						else
-							idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
-							update_Rzz(ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, sites, cutoff)
-						end
-						optimization_gates[idx] = updated_gate
-						append!(optimization_trace, tmp_trace)
-						append!(fidelity_trace, tmp_cost)
-					end
-					# println("\n")
-
-					fidelity₂ = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
-					if iter_idx > 1 && abs(fidelity₂ - fidelity₁) < stop_criteria
-						println("The change of the cost function is smaller than the stopping criteria. Stop the optimization of gates at layer $(layer_idx).")
-						println([fidelity₁, fidelity₂, abs(fidelity₂ - fidelity₁)])
-						break
-					end
-					fidelity₁ = fidelity₂
+					# @show inds(tmp_u)
+					push!(ups, tmp_u)
 				end
+
+				# Right environments: dns[k] = contraction of sites (last qubit of gate k + 1)..N
+				for tmp_idx in 1 : length(idx_pairs)
+					tmp_pair = idx_pairs[tmp_idx]
+					scope = length(tmp_pair) == 1 ? tmp_pair[1] : tmp_pair[2]
+					
+					tmp_d = ITensor(1)
+					for i in N : -1 : scope + 1
+						tmp_d *= ψ_intermediate[i]
+						tmp_d *= dag( ψ_right[i])
+					end
+					@show inds(tmp_d)
+					push!(dns, tmp_d)
+				end
+				
+
+				
+				# # Optimize all gates in the current layer by sweeping
+				# fidelity₁ = fidelity₂ = 0
+				# for iter_idx in 1:default_iters
+				# 	# Update all gates from top to bottom
+				# 	# println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: top-down sweeping")
+
+				# 	for idx in 1:length(idx_pairs)
+				# 		updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
+				# 			update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
+				# 		else
+				# 			update_Rzz(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], idx_pairs[idx][2], sites, cutoff)
+				# 		end
+				# 		optimization_gates[idx] = updated_gate
+				# 		append!(optimization_trace, tmp_trace)
+				# 		append!(fidelity_trace, tmp_cost)
+				# 	end
+				# 	# println("\n")
+
+
+				# 	# Update all gates from bottom to top
+				# 	# println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: bottom-up sweeping")
+				# 	for idx in length(idx_pairs):-1:1
+				# 		updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
+				# 			update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
+				# 		else
+				# 			idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
+				# 			update_Rzz(ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, sites, cutoff)
+				# 		end
+				# 		optimization_gates[idx] = updated_gate
+				# 		append!(optimization_trace, tmp_trace)
+				# 		append!(fidelity_trace, tmp_cost)
+				# 	end
+				# 	# println("\n")
+
+				# 	fidelity₂ = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
+				# 	if iter_idx > 1 && abs(fidelity₂ - fidelity₁) < stop_criteria
+				# 		println("The change of the cost function is smaller than the stopping criteria. Stop the optimization of gates at layer $(layer_idx).")
+				# 		println([fidelity₁, fidelity₂, abs(fidelity₂ - fidelity₁)])
+				# 		break
+				# 	end
+				# 	fidelity₁ = fidelity₂
+				# end
 			end
 
 
