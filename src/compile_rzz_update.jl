@@ -282,8 +282,7 @@ let
 
 			# Per-stage early stop 
 			if iteration > 1 && abs(fidelity_sweep - fidelity_prev_sweep) < per_stage_stop_criteria
-				@info "Per-stage convergence reached; advancing to next stage" sweep = iteration\ 
-				ΔF = abs(fidelity_sweep - fidelity_prev_sweep) threshold = per_stage_stop_criteria
+				@info "Per-stage convergence reached; advancing to next stage" sweep = iteration ΔF = abs(fidelity_sweep - fidelity_prev_sweep) threshold = per_stage_stop_criteria
            		break
 			end
 			fidelity_prev_sweep = fidelity_sweep
