@@ -12,10 +12,12 @@ using Printf
 
 
 include("compute_cost_function.jl")
-include("update_gates.jl")
 include("gates_initialization.jl")
 include("plaquette.jl")
 include("validation.jl")
+include("cached_environment.jl")
+include("gates_update.jl")
+include("update_gates.jl")
 
 
 
@@ -34,6 +36,7 @@ const nsweeps = 1
 const default_iters = 25                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
 const stop_criteria = 1e-4               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
 const per_stage_stop_criteria = 1e-6     
+
 
 
 let
@@ -193,6 +196,7 @@ let
 			for layer_idx in 1 : length(circuit_gates)
 				optimization_gates = circuit_gates[layer_idx]
 				idx_pairs = input_pairs[layer_idx]
+				M = length(idx_pairs)
 
 				
 				# Compress the optimization circuit from the initial MPS side
@@ -222,82 +226,64 @@ let
 				# ψ_right = ψ_bra_collection[layer_idx]
 				
 
-				# Precompute the left and right environments for each gate
-				println("")
-				@show idx_pairs
-				ups = ITensor[]
-				dns = ITensor[]
-				ψ_intermediate = apply(optimization_gates, ψ_left; cutoff = 1e-8)
+				# Precompute the left and right environments for each gate.
+				# ψ_intermediate is no longer needed: ups/dns are built directly
+				# from ψ_left/ψ_right with gates applied on the fly, so bond
+				# Index IDs are inherited from ψ_left and never drift.
+				ups = Vector{ITensor}(undef, M)
+				dns = Vector{ITensor}(undef, M)
 
-				# Left environments: ups[k] = contraction of sites 1..(first qubit of gate k - 1)
-				for (tmp_idx, tmp_pair) in enumerate(idx_pairs)
-					tmp_u = ITensor(1)
-					for i in 1 : tmp_pair[1] - 1
-						tmp_u *= ψ_intermediate[i]
-						tmp_u *= dag(ψ_right[i])
-					end
-					# @show inds(tmp_u)
-					push!(ups, tmp_u)
-				end
-
-				# Right environments: dns[k] = contraction of sites (last qubit of gate k + 1)..N
-				for tmp_idx in 1 : length(idx_pairs)
-					tmp_pair = idx_pairs[tmp_idx]
-					scope = length(tmp_pair) == 1 ? tmp_pair[1] : tmp_pair[2]
-					
-					tmp_d = ITensor(1)
-					for i in N : -1 : scope + 1
-						tmp_d *= ψ_intermediate[i]
-						tmp_d *= dag( ψ_right[i])
-					end
-					@show inds(tmp_d)
-					push!(dns, tmp_d)
-				end
-				
+				init_ups_left!(ups, ψ_left, ψ_right, idx_pairs)
+				precompute_dns!(dns, ψ_left, ψ_right, optimization_gates, idx_pairs, N)
 
 				
-				# # Optimize all gates in the current layer by sweeping
-				# fidelity₁ = fidelity₂ = 0
-				# for iter_idx in 1:default_iters
-				# 	# Update all gates from top to bottom
-				# 	# println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: top-down sweeping")
+				# Optimize all gates in the current layer by sweeping
+				fidelity₁ = fidelity₂ = 0
+				for iter_idx in 1:default_iters
+					# Forward sweep from left to right
+					for k in 1 : M
+						E_T = build_env(ups, dns, ψ_left, ψ_right, k, idx_pairs)
 
-				# 	for idx in 1:length(idx_pairs)
-				# 		updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
-				# 			update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
-				# 		else
-				# 			update_Rzz(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], idx_pairs[idx][2], sites, cutoff)
-				# 		end
-				# 		optimization_gates[idx] = updated_gate
-				# 		append!(optimization_trace, tmp_trace)
-				# 		append!(fidelity_trace, tmp_cost)
-				# 	end
-				# 	# println("\n")
+						new_gate = if length(idx_pairs[k]) == 1
+							update_single_qubit_from_env(E_T, sites[idx_pairs[k][1]])
+						else
+							update_Rzz_from_env(E_T, sites,
+												idx_pairs[k][1], idx_pairs[k][2])
+						end
+						optimization_gates[k] = new_gate
+
+						if k < M
+							extend_ups!(ups, ψ_left, ψ_right, optimization_gates, idx_pairs, k)
+						end
+					end
 
 
-				# 	# Update all gates from bottom to top
-				# 	# println("Forward Propagation: @iteration = $iteration, layer = $layer_idx: bottom-up sweeping")
-				# 	for idx in length(idx_pairs):-1:1
-				# 		updated_gate, tmp_trace, tmp_cost = if length(idx_pairs[idx]) == 1
-				# 			update_single_qubit_gate(ψ_left, ψ_right, optimization_gates, idx, idx_pairs[idx][1], cutoff)
-				# 		else
-				# 			idx₁, idx₂ = idx_pairs[idx][1], idx_pairs[idx][2]
-				# 			update_Rzz(ψ_left, ψ_right, optimization_gates, idx, idx₁, idx₂, sites, cutoff)
-				# 		end
-				# 		optimization_gates[idx] = updated_gate
-				# 		append!(optimization_trace, tmp_trace)
-				# 		append!(fidelity_trace, tmp_cost)
-				# 	end
-				# 	# println("\n")
+					# Backward sweep from right to left
+					for k in M : -1 : 1
+						E_T = build_env(ups, dns, ψ_left, ψ_right, k, idx_pairs)
 
-				# 	fidelity₂ = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
-				# 	if iter_idx > 1 && abs(fidelity₂ - fidelity₁) < stop_criteria
-				# 		println("The change of the cost function is smaller than the stopping criteria. Stop the optimization of gates at layer $(layer_idx).")
-				# 		println([fidelity₁, fidelity₂, abs(fidelity₂ - fidelity₁)])
-				# 		break
-				# 	end
-				# 	fidelity₁ = fidelity₂
-				# end
+						new_gate = if length(idx_pairs[k]) == 1
+							update_single_qubit_from_env(E_T, sites[idx_pairs[k][1]])
+						else
+							update_Rzz_from_env(E_T, sites,
+												idx_pairs[k][1], idx_pairs[k][2])
+						end
+						optimization_gates[k] = new_gate
+
+						if k > 1
+							contract_dns_from_right!(dns, ψ_left, ψ_right, optimization_gates, idx_pairs, k)
+						end
+					end
+
+
+					fidelity₂ = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
+					if iter_idx > 1 && abs(fidelity₂ - fidelity₁) < stop_criteria
+						println("The change of the cost function is smaller than the stopping criteria. Stop the optimization of gates at layer $(layer_idx).")
+						println([fidelity₁, fidelity₂, abs(fidelity₂ - fidelity₁)])
+						break
+					end
+					fidelity₁ = fidelity₂
+				end
 			end
 
 
@@ -334,15 +320,15 @@ let
 	# -----------------------------------------------------------------------------------------
 	# Save the optimization results in an HDF5 file for future analysis and visualization
 	# -----------------------------------------------------------------------------------------
-	output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(n_total)_Rzz_test.h5"
-	h5open(output_filename, "w") do file
-		write(file, "cost_function", cost_function)
-		write(file, "energy_trace", energy_trace)
-		write(file, "plaquette_trace", Matrix(reduce(hcat, plaquette_trace)'))
-		write(file, "optimization_trace", optimization_trace)
-		write(file, "fidelity_trace", fidelity_trace)
-		write(file, "stage_starts", stage_starts)
-	end
+	# output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(n_total)_Rzz_test.h5"
+	# h5open(output_filename, "w") do file
+	# 	write(file, "cost_function", cost_function)
+	# 	write(file, "energy_trace", energy_trace)
+	# 	write(file, "plaquette_trace", Matrix(reduce(hcat, plaquette_trace)'))
+	# 	write(file, "optimization_trace", optimization_trace)
+	# 	write(file, "fidelity_trace", fidelity_trace)
+	# 	write(file, "stage_starts", stage_starts)
+	# end
 
 
 	# -----------------------------------------------------------------------------------------
@@ -379,10 +365,10 @@ let
 
 
 	# Save the expectation values of the plaquette operators in an HDF5 file
-	h5open(output_filename, "r+") do file
-		write(file, "Wp_opt", compiled.wp_opt)
-		write(file, "Wp_target", target.wp_target)
-	end
+	# h5open(output_filename, "r+") do file
+	# 	write(file, "Wp_opt", compiled.wp_opt)
+	# 	write(file, "Wp_target", target.wp_target)
+	# end
 
 
   return

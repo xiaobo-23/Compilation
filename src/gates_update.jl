@@ -1,6 +1,7 @@
-# 11/1/2025
-# Functions used to update a target two-qubit gate within a set of two-qubit gates
-# Use Evenbly-Vidal algorithms to compute the environment tensor and update the target gate
+# 5/21/2026
+# Functions to compute the environment tensor at a gate and update that
+# gate via Evenbly-Vidal SVD (for SQ unitaries) or analytic argmax
+# (for single-parameter Rzz).
 
 using ITensors, ITensorMPS
 using MKL
@@ -12,7 +13,6 @@ include("compute_cost_function.jl")
 include("cached_environment.jl")
 
 
-
 const PauliX = ComplexF64[0  1;  1  0]
 const PauliY = ComplexF64[0 -im; im  0]
 const PauliZ = ComplexF64[1  0;  0 -1]
@@ -22,6 +22,36 @@ const PAULI_PRODUCTS = Dict{String, Matrix{ComplexF64}}(
     "Ryy" => kron(PauliY, PauliY),
     "Rzz" => kron(PauliZ, PauliZ),
 )
+
+
+"""
+    build_env(ups, dns, ψ_left, ψ_right, k, idx_pairs) -> ITensor
+
+Build the environment tensor for gate `k` directly from `ψ_left` and
+`ψ_right`. The cached `ups[k]` / `dns[k]` already contain every gate of
+the current layer EXCEPT the one at gate k's site(s), with all bond
+Index objects inherited from ψ_left/ψ_right — so we can drop bare
+`ψ_left` tensors in at the gate's sites without any divide-out.
+
+Index convention of the returned tensor:
+  - SQ at site i:      open indices (s_i, s_i').
+  - NN Rzz at (i, j):  open indices (s_i, s_j, s_i', s_j').
+"""
+function build_env(ups, dns, ψ_left, ψ_right, k, idx_pairs)
+    if length(idx_pairs[k]) == 1
+        # Single-qubit gate
+        i      = idx_pairs[k][1]
+        bra_i  = prime(dag(ψ_right[i]); tags = "Site")
+        return ups[k] * ψ_left[i] * bra_i * dns[k]
+    else
+        # Two-qubit Rzz gate at NN sites (i, j = i+1)
+        i, j   = idx_pairs[k][1], idx_pairs[k][2]
+        @assert abs(i - j) == 1 "Non-adjacent (i, j) = ($i, $j) not supported"
+        bra_i  = prime(dag(ψ_right[i]); tags = "Site")
+        bra_j  = prime(dag(ψ_right[j]); tags = "Site")
+        return ups[k] * ψ_left[i] * ψ_left[j] * bra_i * bra_j * dns[k]
+    end
+end
 
 
 # """
@@ -88,48 +118,6 @@ const PAULI_PRODUCTS = Dict{String, Matrix{ComplexF64}}(
 
 
 """
-    build_env(ups, dns, ψ_left, ψ_intermediate, ψ_right,
-              optimization_gates, k, idx_pairs) -> ITensor
-
-Build the environment tensor for gate k using cached `ups[k]` and `dns[k]`.
-
-Index convention:
-  - Single-qubit gate at site i:  E_T has 2 open indices (s_i, s_i').
-  - Two-qubit Rzz at sites (i, j): E_T has 4 open indices (s_i, s_j, s_i', s_j').
-
-For SQ:
-  Substitute bare `ψ_left[i]` at the target site (works because SQ apply
-  preserves bonds, so ψ_left and ψ_intermediate share boundary bonds).
-
-For NN Rzz (j = i + 1):
-  Divide out the current Rzz from `ψ_intermediate[i] · ψ_intermediate[j]`
-  via `Rzz†`, leaving sites i and j with open physical indices for the
-  gate update.
-"""
-function build_env(ups, dns, ψ_left, ψ_intermediate, ψ_right,
-                   optimization_gates, k, idx_pairs)
-    if length(idx_pairs[k]) == 1
-        # ── Single-qubit gate ────────────────────────────────────────────
-        i = idx_pairs[k][1]
-        bra_i = prime(dag(ψ_right[i]); tags = "Site")
-        return ups[k] * ψ_left[i] * bra_i * dns[k]
-    else
-        # ── Two-qubit Rzz gate at NN sites (i, j = i+1) ──────────────────
-        i, j      = idx_pairs[k][1], idx_pairs[k][2]
-        @assert abs(i - j) == 1 "Non-adjacent (i, j) = ($i, $j) not supported here"
-        
-        Rzz_dag   = swapprime(dag(optimization_gates[k]), 0 => 1)
-        T_divided = noprime(ψ_intermediate[i] * ψ_intermediate[j] * Rzz_dag)
-        bra_i     = prime(dag(ψ_right[i]); tags = "Site")
-        bra_j     = prime(dag(ψ_right[j]); tags = "Site")
-        
-        return ups[k] * T_divided * bra_i * bra_j * dns[k]
-    end
-end
-
-
-
-"""
     update_single_qubit_from_env(E_T, s) -> ITensor
 
 Given the environment tensor `E_T` for a single-qubit gate at site `s`
@@ -157,7 +145,7 @@ Rzz(ϕ) is single-parameter, so the optimum is analytic:
 which maximizes Re Tr(Rzz(ϕ) · E_T) = cos(ϕ)·Re tr(E_T) + sin(ϕ)·Im tr(E_T·Z⊗Z).
 """
 function update_Rzz_from_env(E_T, sites, i, j)
-    P = PAULI_PRODUCTS[gate_name]	
+    P = PAULI_PRODUCTS["Rzz"]	
 
     s_i, s_j = sites[i], sites[j]
     C_row    = combiner(s_j,   s_i)              # unprimed (ket) side
@@ -174,8 +162,8 @@ function update_Rzz_from_env(E_T, sites, i, j)
 	
 
 	# Update the target gate using native gate constructor in ITensorMPS.jl
-	updated_T1 = op(input_sites, gate_name, idx₁, idx₂; ϕ=θ₁)
-	updated_T2 = op(input_sites, gate_name, idx₁, idx₂; ϕ=θ₂)
+	updated_T1 = op(sites, "Rzz", i, j; ϕ=θ₁)
+	updated_T2 = op(sites, "Rzz", i, j; ϕ=θ₂)
 
 
 	if real((E_T * updated_T1)[1]) > real((E_T * updated_T2)[1])
