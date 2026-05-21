@@ -142,3 +142,44 @@ function precompute_dns!(dns, ψ_intermediate, ψ_right, idx_pairs, N)
         contract_dns_from_right!(dns, ψ_intermediate, ψ_right, idx_pairs, k)
     end
 end
+
+
+"""
+    refresh_intermediate!(ψ_intermediate, new_gate, ψ_left, idx_pairs, k; cutoff = 1e-8)
+
+After updating gate `k` to `new_gate`, refresh `ψ_intermediate` at the gate's
+site(s) so it reflects the new gate (with the OLD gate's effect removed).
+
+This uses bare `ψ_left[i]` (not the previous `ψ_intermediate[i]`), so we
+don't need to undo the old gate via Rzz†.
+
+* SQ gate at site i: `ψ_intermediate[i] = noprime(new_gate · ψ_left[i])`.
+* NN Rzz at adjacent sites (i, j=i+1): SVD-split the joint tensor
+  `noprime(new_gate · ψ_left[i] · ψ_left[j])` back into MPS form.
+* LR Rzz: NOT IMPLEMENTED. Currently throws an error. (For long-range gates
+  this requires SWAP-based application or careful manual handling of the
+  intermediate bonds.)
+"""
+function refresh_intermediate!(ψ_intermediate, new_gate, ψ_left, idx_pairs, k;
+                                cutoff::Real = 1e-8)
+    if length(idx_pairs[k]) == 1
+        # ── Single-qubit gate ────────────────────────────────────────────
+        i = idx_pairs[k][1]
+        ψ_intermediate[i] = noprime(new_gate * ψ_left[i])
+    else
+        i, j = idx_pairs[k][1], idx_pairs[k][2]
+        if abs(i - j) == 1
+            # ── Nearest-neighbor Rzz ─────────────────────────────────────
+            T_new = noprime(new_gate * ψ_left[i] * ψ_left[j])
+            
+            s_i        = siteind(ψ_left, i)
+            inds_for_U = i > 1 ? (s_i, linkind(ψ_left, i - 1)) : (s_i,)
+            U, S, V    = svd(T_new, inds_for_U; cutoff)
+            ψ_intermediate[i] = U
+            ψ_intermediate[j] = S * V
+        else
+            error("refresh_intermediate! does not yet support long-range " *
+                  "Rzz gates (i=$i, j=$j). Use NN brickwall for now.")
+        end
+    end
+end
