@@ -2,21 +2,14 @@
 # Helper functions that set up the Hamiltonian for the interferometer. 
 # Construct interactions including two-body Kitaev interactions and three-body TRSB terms based on the geometry of the interferometer lattice.
 
-
 using ITensors
 using ITensorMPS
-using HDF5
-using AppleAccelerate
-using LinearAlgebra
-using TimerOutputs
-
-
 
 include("interferometry_lattice.jl")
-include("interferometry_plaquettes.jl")
-include("CustomObserver.jl")
 
 
+
+# -------- Geometry helpers ------------------------------------------------------------------------
 """
     column_index(site::Int, x_gauge::AbstractVector{Int}) -> Int
 
@@ -33,6 +26,34 @@ function column_index(site::Int, x_gauge::AbstractVector{Int})
 end
 
 
+
+# -------- Two-body Kitaev term dispatch -----------------------------------------------------------
+"""
+    bond_operator(b, x_gauge, Ny) -> Union{Nothing, NTuple{2,String}}
+
+Return two-body interaction for the Kitaev flavor of bond `b`, or `nothing` if
+the bond doesn't match any expected pattern. Dispatch is:
+
+    even-x column                       → z-bond  (Sz, Sz)
+    odd-x column, |s2-s1| == Ny         → x-bond  (Sx, Sx)
+    odd-x column, |s2-s1| == Ny - 1     → y-bond  (Sy, Sy)
+"""
+function bond_operator(b::LatticeBond, x_gauge, Ny::Int)
+    x = column_index(b.s1, x_gauge)
+    if iseven(x)
+        return ("Sz", "Sz")
+    elseif abs(b.s1 - b.s2) == Ny
+        return ("Sx", "Sx")
+    elseif abs(b.s1 - b.s2) == Ny - 1
+        return ("Sy", "Sy")
+    else
+        return nothing
+    end
+end
+
+
+
+# -------- Three-body TRSB term dispatch -----------------------------------------------------------
 """
     wedge_operators(w::WedgeBond, x_odd::Bool, Ny::Int) -> NTuple{3,String}
 

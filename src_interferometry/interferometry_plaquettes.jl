@@ -4,8 +4,35 @@
 
 
 """
-	Generate a list of site indices as the reference points for the plaquettes 
-	in the interferometry lattice with open boundary conditions
+    interferometry_plaquette_reference_obc(input_sites, input_length,
+                                           input_width, input_gauge) -> Vector{Int}
+
+Find the **reference (anchor) site** of every hexagonal plaquette on the
+open-boundary interferometer lattice. Each hexagon is identified by a single
+lower-left vertex; `interferometry_plaquette_obc` later expands each anchor
+into its six vertices.
+
+A site is selected as an anchor based on its lattice coordinates `(x, y)`:
+  - `x` = column index, recovered from `input_gauge`
+    (`input_gauge[x] < site ≤ input_gauge[x+1]`);
+  - `y` = row within the column (1-based), only meaningful for width-4
+    columns (left as 0 otherwise).
+Only odd columns with `x < 2·input_length - 1` can anchor a hexagon (so the
+plaquette does not run off the right edge). Within those, width-3 columns
+always anchor; width-4 columns anchor except on specific boundary rows,
+which depend on the widths of the neighboring columns `x-1` and `x+1`.
+
+# Arguments
+- `input_sites::Int`: total number of lattice sites `N`.
+- `input_length::Int`: number of unit cells along x (`Nx_unit`); bounds the
+  rightmost anchor column.
+- `input_width::Vector{Int}`: per-column site count (the `width_profile`,
+  values 3 or 4). Required despite the `Int[]` default.
+- `input_gauge::Vector{Int}`: cumulative-sum gauge mapping a site to its
+  column (the `x_gauge`). Required despite the `Int[]` default.
+
+# Returns
+- `Vector{Int}`: site indices of all hexagon anchors, in increasing order.
 """
 function interferometry_plaquette_reference_obc(input_sites::Int, input_length::Int, 
 	input_width::Vector{Int}=Int[], input_gauge::Vector{Int}=Int[])
@@ -64,7 +91,31 @@ end
 
 
 """
-	Generate a list of site indices for each plaquette in the interferometry lattice 
+    interferometry_plaquette_obc(input_width, input_gauge, input_refs) -> Matrix{Int}
+
+Expand each plaquette anchor into the **six site indices** of its hexagon.
+Row `p` of the returned matrix lists the six vertices of plaquette `p` in a
+fixed traversal order around the hexagon; that order is paired position-by-
+position with the operator string in `measure_plaquettes`, so the column
+order here must stay in sync with `plaquette_ops`.
+
+Vertices are built from the anchor by fixed offsets: columns 1, 2, 6 are
+`reference`, `reference+4`, `reference+3`; columns 3 and 5 step by +4 when
+the next two columns are both width-4, otherwise by +3; column 4 is
+`column 5 + 4`. The +3 vs +4 choice accounts for the narrowing at width-3
+(constriction) columns.
+
+# Arguments
+- `input_width::Vector{Int}`: per-column site count (`width_profile`).
+  Required despite the `Int[]` default.
+- `input_gauge::Vector{Int}`: cumulative-sum column gauge (`x_gauge`).
+  Required despite the `Int[]` default.
+- `input_refs::Vector{Int}`: anchor sites from
+  `interferometry_plaquette_reference_obc`.
+
+# Returns
+- `Matrix{Int}` of size `(length(input_refs), 6)`: row `p` holds the six
+  ordered site indices of plaquette `p`.
 """
 function interferometry_plaquette_obc(input_width::Vector{Int}=Int[], input_gauge::Vector{Int}=Int[], input_refs::Vector{Int}=Int[])
 	# Initialize the plaquette matrix 
@@ -110,13 +161,31 @@ end
         -> Vector{Float64}
 
 Expectation value ⟨ψ|Wₚ|ψ⟩ of the six-site plaquette operator on every
-hexagon. `plaquette_indices[p, :]` holds the six site indices of plaquette
-`p`; `plaquette_ops` is the fixed operator string applied in that order.
+hexagon, returned in plaquette order. For each plaquette the operator is
+assembled as a product `plaquette_ops[k]` acting on site
+`plaquette_indices[p, k]`, built into an MPO and contracted with `ψ`.
 
-The string uses "iY" = i·σʸ (real matrix) to keep ITensor in real
-arithmetic. Each pair of "iY" factors contributes i² = -1, so the physical
-plaquette value is `real(⟨Wₚ⟩) / iⁿ` where n = number of "iY". For the
-standard 6-site string with two "iY", this sign is simply -1.
+The operator string uses `"iY" = i·σʸ` (a real matrix) to keep ITensor in
+real arithmetic. The raw contraction therefore measures `Wₘₑₐₛ = iⁿ · Wₚ`,
+where `n` is the number of `"iY"` factors, so the physical value is
+`real(⟨Wₘₑₐₛ⟩) / iⁿ`. Since `n` is even, `iⁿ = ±1` is its own inverse and the
+correction reduces to multiplying by `sign = real(im^n)` (= -1 for the
+standard two-`"iY"` string).
+
+# Arguments
+- `ψ::MPS`: state to measure (assumed normalized, e.g. a DMRG ground state).
+- `sites`: the site indices of `ψ`.
+- `plaquette_indices::AbstractMatrix{Int}`: row `p` gives the six site
+  indices of plaquette `p` (from `interferometry_plaquette_obc`).
+- `plaquette_ops::AbstractVector{<:AbstractString}`: operator names applied
+  in column order; must contain an even number of `"iY"` factors.
+
+# Keyword arguments
+- `imag_tol::Real = 1e-8`: warn if any contraction's imaginary part exceeds
+  this (the operator is Hermitian, so it should be real).
+
+# Returns
+- `Vector{Float64}`: the sign-corrected ⟨Wₚ⟩ for each plaquette.
 """
 function measure_plaquettes(ψ::MPS, sites,
                             plaquette_indices::AbstractMatrix{Int},

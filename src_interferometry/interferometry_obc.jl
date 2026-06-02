@@ -78,15 +78,9 @@ let
     println("")
 
 
-
-    # -------- Set up all bonds in the interferometer --------------------------------------------------------------------
-    # Use these bonds to set up the two-body Kitaev interactions in the Hamiltonian
-    println(repeat("*", 100))
-    println("Setting up all bonds on the interferometer")
-
-
-    # Define the constrictions on the interferometer
-    # Set up the width and gauge profiles so that we can compute the x and y coordinates for each lattice point
+    # -------- Set up geometry of the interferometer --------------------------------------------------------------------
+    # Set up the width and gauge profiles so that we can define the x and y coordinates for each lattice point
+    # Allocate constrictions on the interferometer lattice 
 
     # # Example 1: Narrow constrictions on Lx = 8, Ly = 4 lattice
     # constriction₁ = [17, 20]
@@ -108,14 +102,15 @@ let
     # unordered (smaller_site, larger_site) pairs so we don't have to think
     # about bond orientation when looking up.
     unordered_pair(s1, s2) = s1 < s2 ? (s1, s2) : (s2, s1)
-
     constrictions          = (constriction₁, constriction₂)        # extensible: just push more in
     constriction_bond_set  = Set(unordered_pair(c[1], c[2]) for c in constrictions)
 
 
 
-    
     # ------- Set up the bonds on the interferometer ---------------------------------------------------------------------
+    println(repeat("*", 100))
+    println("Setting up all bonds on the interferometer")
+
     lattice = interferometry_lattice_obc(Nx, Ny, N, width_profile)
     number_of_bonds = length(lattice)
 
