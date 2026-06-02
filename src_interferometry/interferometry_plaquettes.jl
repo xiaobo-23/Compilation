@@ -1,10 +1,14 @@
-# Generate the reference indices for the plaquettes in the interferometry lattice
+# 6/1/2026
+# Helper functions that set up the indices for the plaquettes in the interferometry lattice
+# Helper functions that compute the expectation values of the plaquette operators
+
+
+"""
+	Generate a list of site indices as the reference points for the plaquettes 
+	in the interferometry lattice with open boundary conditions
+"""
 function interferometry_plaquette_reference_obc(input_sites::Int, input_length::Int, 
 	input_width::Vector{Int}=Int[], input_gauge::Vector{Int}=Int[])
-	"""
-		Generate a list of site indices as the reference points for the plaquettes 
-		in the interferometry lattice with open boundary conditions
-	"""
 	
 	# Loop through all the sites and select the sites that can be used as the reference points for plaquettes
 	plaquette_refs = Int[]
@@ -29,7 +33,7 @@ function interferometry_plaquette_reference_obc(input_sites::Int, input_length::
 				end
 			end
 		end
-		@show site_idx, x, y
+		# @show site_idx, x, y
 
 
 		# Determine if the site can be used as a reference point based on its (x, y) coordinates
@@ -59,11 +63,10 @@ function interferometry_plaquette_reference_obc(input_sites::Int, input_length::
 end
 
 
-
+"""
+	Generate a list of site indices for each plaquette in the interferometry lattice 
+"""
 function interferometry_plaquette_obc(input_width::Vector{Int}=Int[], input_gauge::Vector{Int}=Int[], input_refs::Vector{Int}=Int[])
-	"""
-		Generate a list of site indices for each plaquette in the interferometry lattice 
-	"""
 	# Initialize the plaquette matrix 
 	plaquette = Matrix{Int}(undef, length(input_refs), 6)
 
@@ -94,8 +97,48 @@ function interferometry_plaquette_obc(input_width::Vector{Int}=Int[], input_gaug
 		plaquette[idx, 4] = plaquette[idx, 5] + 4
 	end
 	
-	show(IOContext(stdout, :limit => false), "text/plain", plaquette)
-	println("")
+	# show(IOContext(stdout, :limit => false), "text/plain", plaquette)
+	# println("")
 	
 	return plaquette
+end
+
+
+
+"""
+    measure_plaquettes(ψ, sites, plaquette_indices, plaquette_ops; imag_tol=1e-8)
+        -> Vector{Float64}
+
+Expectation value ⟨ψ|Wₚ|ψ⟩ of the six-site plaquette operator on every
+hexagon. `plaquette_indices[p, :]` holds the six site indices of plaquette
+`p`; `plaquette_ops` is the fixed operator string applied in that order.
+
+The string uses "iY" = i·σʸ (real matrix) to keep ITensor in real
+arithmetic. Each pair of "iY" factors contributes i² = -1, so the physical
+plaquette value is `real(⟨Wₚ⟩) / iⁿ` where n = number of "iY". For the
+standard 6-site string with two "iY", this sign is simply -1.
+"""
+function measure_plaquettes(ψ::MPS, sites,
+                            plaquette_indices::AbstractMatrix{Int},
+                            plaquette_ops::AbstractVector{<:AbstractString};
+                            imag_tol::Real = 1e-8)
+    n_iY = count(==("iY"), plaquette_ops)
+    iseven(n_iY) || error("Odd number of 'iY' factors → operator is non-Hermitian")
+    sign = real(im^n_iY)            # = -1 for the standard two-iY string
+
+    nplaq = size(plaquette_indices, 1)
+    vals  = zeros(Float64, nplaq)
+
+    for p in 1:nplaq
+        idx  = @view plaquette_indices[p, :]
+        os_w = OpSum()
+        add!(os_w, 1.0, Iterators.flatten(zip(plaquette_ops, idx))...)
+        W = MPO(os_w, sites)
+
+        z = inner(ψ', W, ψ)
+        abs(imag(z)) < imag_tol ||
+            @warn "Plaquette $p has non-negligible imaginary part" imag(z)
+        vals[p] = sign * real(z)
+    end
+    return vals
 end

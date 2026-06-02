@@ -99,26 +99,7 @@ let
     # push!(width_profile, 3)
 
 
-    # # Example 2: Narrow constrictions on Lx = 10, Ly = 4 lattice
-    # constriction₁ = [25, 28]
-    # constriction₂ = [47, 50]
-    # width_profile = Int[3, 4, 4, 4, 4, 3, 4, 4, 3, 4, 4, 3, 4, 4, 3, 4, 4, 4, 4, 3]
-
-
-    # Example 3: Narrow constrictions on Lx = 12, Ly = 4 lattice
-    # constriction₁ = [33, 36]
-    # constriction₂ = [55, 58]
-    # width_profile = Int[3, 4, 4, 4, 4, 4, 4, 3, 4, 4, 3, 4, 4, 3, 4, 4, 3, 4, 4, 4, 4, 4, 4, 3]
-
-
-    # # Example 4: Narrow constrictions on Lx = 14, Ly = 4 lattice   
-    # constriction₁ = [41, 44]
-    # constriction₂ = [63, 66]
-    # width_profile = Int[3, 4, 4, 4, 4, 4, 4, 4, 4, 3, 4, 4, 3, 4, 4, 3, 4, 4, 3, 4, 4, 4, 4, 4, 4, 4, 4, 3]
-
-
-
-    # Example 5: Narrow constrictions on Lx = 9, Ly = 4 lattice
+    # Example 2: Narrow constrictions on Lx = 9, Ly = 4 lattice
     constriction₁ = [17, 20]
     constriction₂ = [47, 50]
     width_profile = [3, 4, 4, 3, 4, 4, 3, 4, 4, 4, 4, 3, 4, 4, 3, 4, 4, 3]
@@ -133,6 +114,7 @@ let
 
 
 
+    
     # ------- Set up the bonds on the interferometer ---------------------------------------------------------------------
     lattice = interferometry_lattice_obc(Nx, Ny, N, width_profile)
     number_of_bonds = length(lattice)
@@ -182,53 +164,42 @@ let
 
     # Loop through all the bonds in the lattice and set up the two-body interaction terms correspondingly.
     os = OpSum()
-    for b in lattice
-        scale = unordered_pair(b.s1, b.s2) ∈ constriction_bond_set ? α : 1.0
-        
-        # Determine x coordinate of the first site in the bond
-        x = 0
-        for idx in 1 : length(x_gauge) - 1
-            if b.s1 > x_gauge[idx] && b.s1 <= x_gauge[idx + 1]
-                x = idx
-                break
-            end
+    if abs(Jx) > 1e-8 || abs(Jy) > 1e-8 || abs(Jz) > 1e-8
+        for b in lattice
+            ops = bond_operator(b, x_gauge, Ny)
+            ops == nothing && continue
+
+            scale = unordered_pair(b.s1, b.s2) ∈ constriction_bond_set ? α : 1.0
+            J = ops[1] == "Sx" ? Jx : 
+                ops[1] == "Sy" ? Jy : Jz
+
+            os .+= -scale * J, ops[1], b.s1, ops[2], b.s2
+            @info "Two-body term" sites=(b.s1, b.s2) op=ops[1] coupling=-scale * J
+
+            ops[1] == "Sx" && (xbond += 1)
+            ops[1] == "Sy" && (ybond += 1)  
+            ops[1] == "Sz" && (zbond += 1)
         end
-    
-        # Set up the two-body interaction terms based on the bond type
-        if iseven(x)
-            os .+= -scale * Jz, "Sz", b.s1, "Sz", b.s2
-            zbond += 1
-            @info "Added Sz-Sz bond" term = ("Jz", scale * Jz, "Sz", b.s1, "Sz", b.s2)
-        elseif abs(b.s1 - b.s2) == Ny 
-            os .+= -scale * Jx, "Sx", b.s1, "Sx", b.s2
-            xbond += 1
-            @info "Added Sx-Sx bond" term = ("Jx", scale * Jx, "Sx", b.s1, "Sx", b.s2)
-        elseif abs(b.s1 - b.s2) == Ny - 1
-            os .+= -scale * Jy, "Sy", b.s1, "Sy", b.s2
-            ybond += 1
-            @info "Added Sy-Sy bond" term = ("Jy", scale * Jy, "Sy", b.s1, "Sy", b.s2)
-        end
+
+
+        # ------- Validate the construction of the two-body interaction terms ------------------------------------------------
+        total_bonds_assigned = xbond + ybond + zbond
+        @info "Two-body bond counts" xbond ybond zbond total=total_bonds_assigned expected=number_of_bonds
+
+        total_bonds_assigned == number_of_bonds || error("""
+            Two-body bond count mismatch:
+            x-bonds (b.s2 - b.s1 == Ny):     $xbond
+            y-bonds (b.s2 - b.s1 == Ny - 1): $ybond
+            z-bonds (even-x columns):        $zbond
+            total assigned to OpSum:         $total_bonds_assigned
+            expected (length of lattice):    $number_of_bonds
+            missing:                         $(number_of_bonds - total_bonds_assigned)
+            """)
+        println("\n")
     end
-
-
-    
-    # ------- Validate the construction of the two-body interaction terms ------------------------------------------------
-    total_bonds_assigned = xbond + ybond + zbond
-    @info "Two-body bond counts" xbond ybond zbond total=total_bonds_assigned expected=number_of_bonds
-
-    total_bonds_assigned == number_of_bonds || error("""
-        Two-body bond count mismatch:
-        x-bonds (b.s2 - b.s1 == Ny):     $xbond
-        y-bonds (b.s2 - b.s1 == Ny - 1): $ybond
-        z-bonds (even-x columns):        $zbond
-        total assigned to OpSum:         $total_bonds_assigned
-        expected (length of lattice):    $number_of_bonds
-        missing:                         $(number_of_bonds - total_bonds_assigned)
-        """)
-    println("\n")
  
   
-  
+
     # ------- Set up the three-body interactions in the Hamiltonian ------------------------------------------------------
     if abs(κ) > 1e-8
         println(repeat("*", 100))
@@ -260,7 +231,6 @@ let
 
 
   
-  
     # ------- Run DMRG to find the ground-state wavefunction ---------------------------------------------------------------
     println(repeat("*", 100))
     println("Running DMRG simulations to find the ground-state wavefunction")
@@ -269,12 +239,12 @@ let
     # Initialize the wavefunction as a random MPS and set up the Hamiltonian as an MPO
     sites = siteinds("S=1/2", N)
     state = [isodd(n) ? "Up" : "Dn" for n in 1:N]
-    ψ₀ = random_mps(sites, state, 8)
+    ψ₀ = randomMPS(sites, state, 8)
     H = MPO(os, sites)
 
 
     # Set up hyperparameters used in the DMRG simulations, including bond dimensions, cutoff etc.
-    nsweeps = 1
+    nsweeps = 2
     maxdim  = [20, 60, 100, 500, 800, 1000]
     cutoff  = [1E-10]
     eigsolve_krylovdim = 50
@@ -282,9 +252,9 @@ let
 
 
     # Measure one-point functions of the initial state
-    Sx₀ = expect(ψ₀, "Sx", sites = 1 : N)
-    Sy₀ = -im * expect(ψ₀, "iSy", sites = 1 : N)
-    Sz₀ = expect(ψ₀, "Sz", sites = 1 : N)
+    # Sx₀ = expect(ψ₀, "Sx", sites = 1 : N)
+    # Sy₀ = -im * expect(ψ₀, "iSy", sites = 1 : N)
+    # Sz₀ = expect(ψ₀, "Sz", sites = 1 : N)
 
 
     # Construct a custom observer and stop the DMRG calculation early if criteria are met
@@ -300,7 +270,7 @@ let
 
 
   
-    # ------- Measure various observables on the ground-state wavefunction ------------------------------------------------------ 
+    # ------- Measure various observables on the ground-state wavefunction ------------------------------------------------- 
     # Measure local observables (one-point functions)
     @timeit time_machine "one-point functions" begin
         Sx = expect(ψ, "Sx", sites = 1 : N)
@@ -317,76 +287,59 @@ let
     end
 
 
-    # Measure the expectation values of the plaquette operators (six-point correlators) on each hexagon
+   
+    # ------- Measure the expectation values of the plaquette operators on each hexagon ------------------------------------
     println(repeat("*", 100))
-    println("Measuring the expectation values of the plaquette operators on each hexagon")
+    println("Measure expectation values of the plaquette operators on each hexagon")
 
-
-    # Set up the operators in fixed order for each plaquette
-    plaquette = Vector{String}(["Z", "iY", "X", "Z", "iY", "X"])
-
-
-    # Set up a list of indices for each plaquette on the interferometry lattice 
-    plaquette_refs = interferometry_plaquette_reference_obc(N, Nx_unit, width_profile, x_gauge) # Step 1: set up all the reference points
-    plaquette_indices = interferometry_plaquette_obc(width_profile, x_gauge, plaquette_refs)    # Step 2: set up the indices for each plaquette based on the reference points
-
-
-    # Compute the expectation values of the plaquette operators on each hexagon
-    nplaquettes = size(plaquette_indices, 1)
-    plaquette_vals = zeros(Float64, nplaquettes)
-    for idx in 1:nplaquettes
-        indices = plaquette_indices[idx, :]
-
-        # Construct the MPO for the plaquette operator
-        os_w = OpSum()
-        os_w .+= plaquette[1], indices[1], 
-            plaquette[2], indices[2], 
-            plaquette[3], indices[3], 
-            plaquette[4], indices[4], 
-            plaquette[5], indices[5], 
-            plaquette[6], indices[6]
-        W = MPO(os_w, sites)
-
-        # Compute the expectation value of the plaquette operator using MPS-MPO contraction
-        plaquette_vals[idx] = -1.0 * real(inner(ψ', W, ψ))
+    plaquette_ops     = ["Z", "iY", "X", "Z", "iY", "X"]
+    plaquette_refs    = interferometry_plaquette_reference_obc(N, Nx_unit, width_profile, x_gauge)
+    plaquette_indices = interferometry_plaquette_obc(width_profile, x_gauge, plaquette_refs)
+    @timeit time_machine "plaquette operators" begin
+        plaquette_vals    = measure_plaquettes(ψ, sites, plaquette_indices, plaquette_ops)
     end
+    
 
-  
-    # ------- Compute the variance of the energy to check how good the ground-state wavefunction is --------------------------------------
-    @timeit time_machine "compaute the variance" begin
+
+    # ------- Compute the variance of the energy to check how good the ground-state wavefunction is ------------------------
+    println(repeat("*", 100))
+    println("Compute the variance of the energy to check how good the ground-state wavefunction is")
+
+    @timeit time_machine "compute the variance" begin
       H2 = inner(H, ψ, H, ψ)
       E₀ = inner(ψ', H, ψ)
-      variance = H2 - E₀^2
+      variance = real(H2) - real(E₀)^2
     end
     println("Variance of the energy is $variance")
     println("\n")
 
 
 
-    # ------- Print out a summary of results --------------------------------------------------------------------------------------
-    println(repeat("*", 100))
-    println("Summary of results:")
-    println("\n")
+    # ------- Print out a summary of results -------------------------------------------------------------------------------
+    # println(repeat("*", 100))
+    # println("Summary of results:")
+    # println("\n")
 
 
-    println("Expectation values of the plaquette oprators on each hexagon are: ")
-    for idx in 1:nplaquettes
-        println("Plaquette $idx : ", plaquette_vals[idx])
-    end
-    println("\n")
+    # println("Expectation values of the plaquette oprators on each hexagon are: ")
+    # @info "Plaquette ⟨Wₚ⟩" 
+    # for (p, w) in enumerate(plaquette_vals)
+    #     @printf "  plaquette %3d : %+.8f\n" p w
+    # end
+    # println("\n")
 
 
-    println("Bond dimensions of the ground-state wavefunction are: ")
-    @show linkdims(ψ) 
-    println("\n")
+    # println("Bond dimensions of the ground-state wavefunction are: ")
+    # @show linkdims(ψ) 
+    # println("\n")
 
 
-    println(header)
-    println(header)
-    println("\n")
+    # println(header)
+    # println(header)
+    # println("\n")
  
 
-    # # ------- Save the ground-state wavefunction and various observables to an HDF5 file -------------------------------------- 
+    # ------- Save the ground-state wavefunction and various observables to an HDF5 file -----------------------------------
     # h5open("data/interferometry_Nx$(Nx_unit)_Ny$(Ny_unit)_kappa$(κ).h5", "cw") do file
     #     write(file, "psi", ψ)
     #     # write(file, "E0", energy)
