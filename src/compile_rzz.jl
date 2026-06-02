@@ -17,7 +17,7 @@ include("plaquette.jl")
 include("validation.jl")
 include("cached_environment.jl")
 include("gates_update.jl")
-include("update_gates.jl")
+# include("update_gates.jl")
 
 
 
@@ -32,7 +32,7 @@ BLAS.set_num_threads(8)
 const model = (; Nx = 8, Ny = 3, Jx = 1.0, Jy = 1.0, Jz = 1.0, κ = -0.4, yperiodic = true)
 const N = model.Nx * model.Ny            # Total number of qubits
 const cutoff = 1e-4
-const nsweeps = 100
+const nsweeps = 2
 const default_iters = 25                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
 const stop_criteria = 1e-4               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
 const per_stage_stop_criteria = 1e-6     
@@ -126,8 +126,8 @@ let
 	#   2. two-qubit gates on even bonds (i, i+1), i = 2, 4, 6, …
 	# -----------------------------------------------------------------------------------------
 	# Configure the brickwall gate pattern of Rzz(θ) gates
-	n_initial = 6
-	n_total   = 6
+	n_initial = 2
+	n_total   = 2
 	brickwall_block = [
 		[[i, i + 1] for i in 1 : 2 : N - 1],
 		[[i, i + 1] for i in 2 : 2 : N - 1],
@@ -300,12 +300,12 @@ let
 			println(repeat("-", 100), "\n")
 
 
-			# Per-stage early stop 
-			if iteration > 1 && abs(fidelity_sweep - fidelity_prev_sweep) < per_stage_stop_criteria
-				@info "Per-stage convergence reached; advancing to next stage" sweep = iteration ΔF = abs(fidelity_sweep - fidelity_prev_sweep) threshold = per_stage_stop_criteria
-           		break
-			end
-			fidelity_prev_sweep = fidelity_sweep
+			# # Per-stage early stop 
+			# if iteration > 1 && abs(fidelity_sweep - fidelity_prev_sweep) < per_stage_stop_criteria
+			# 	@info "Per-stage convergence reached; advancing to next stage" sweep = iteration ΔF = abs(fidelity_sweep - fidelity_prev_sweep) threshold = per_stage_stop_criteria
+           	# 	break
+			# end
+			# fidelity_prev_sweep = fidelity_sweep
 		end
 	end
 
@@ -314,7 +314,6 @@ let
 	# Verifying the optimization results: report the cost function and energy trace during the optimization process.
 	# @show cost_function
 	# @show energy_trace
-	# @show (optimization_trace - fidelity_trace)[1 : 20]
 
 
 	# -----------------------------------------------------------------------------------------
@@ -331,36 +330,37 @@ let
 	# end
 
 
-	# -----------------------------------------------------------------------------------------
-	# Validate the optimized circuit by measuring the total energy of the system and
-	# the hexagonal plaquette operators on both the compiled MPS and the target MPS, 
-	# and report the optimization history.
-	# -----------------------------------------------------------------------------------------
+
+
+	# ------- Validate the compiled circuit against the target MPS ---------------------------------------------
+	# Measure energy + ⟨Wp⟩ on both states. Variance is opt-in (expensive), so we
+	# compute it once here rather than inside the per-sweep validation.
 	compiled = validate_circuit(circuit_gates, ψ₀; Ny = model.Ny, Hamiltonian = H, cutoff = cutoff)
-	target   = validate_reference(ψ_T;                       Ny = model.Ny, Hamiltonian = H)
+	target   = validate_reference(ψ_T;             Ny = model.Ny, Hamiltonian = H)
+	ΔE           = compiled.E_opt - target.E_target
 
-
-	# Cross-check vs the DMRG ground-state energy stored alongside ψ_T.
-	# A large gap here points at energy_mpo (bond/wedge dispatch or κ sign).
+	
+	
+	# Cross-check the target energy against the stored DMRG ground-state energy.
 	E0_stored = h5open(target_mps_path, "r") do f; read(f, "E0"); end
 	ΔE0       = abs(target.E_target - E0_stored)
 	ΔE0 < 1e-6 || @warn "Computed target energy disagrees with stored E0" E0_stored target.E_target ΔE0
-	ΔE       = compiled.E_opt - target.E_target
 
 
-	println("\n", repeat("-", 100))
-	println("Energy, variance, fidelity")
-	println(repeat("-", 100))
-	@printf "  %-10s E = %+.8f    variance = %.3e\n"		"target"   target.E_target target.var_target
-	@printf "  %-10s E = %+.8f    variance = %.3e\n"		"compiled" compiled.E_opt  compiled.var_opt
-	@printf "  %-10s ΔE = %+.8f   \n"						"gap"      ΔE 
 
 
-	println("\n", repeat("-", 100))
-	println("⟨Wp⟩ on each plaquette")
-	println(repeat("-", 100))
-	@printf "  %-12s %s\n" "optimized" join((@sprintf("%+.8f", x) for x in compiled.wp_opt), "  ")
-	@printf "  %-12s %s\n" "target"    join((@sprintf("%+.8f", x) for x in target.wp_target), "  ")
+	# -------- Report-------------------------------------------------------------------------------------------
+	section(title) = (println("\n", repeat("-", 100)); println(title); println(repeat("-", 100)))
+
+	section("Energy, variance, fidelity")
+	@printf "  %-10s E  = %+.8f   \n"  "target"   target.E_target
+	@printf "  %-10s E  = %+.8f   \n"  "compiled" compiled.E_opt
+	@printf "  %-10s ΔE = %+.8f   \n"  "gap"      ΔE
+
+	section("⟨Wp⟩ on each plaquette")
+	for (label, wp) in (("optimized", compiled.wp_opt), ("target", target.wp_target))
+		@printf "  %-12s %s\n" label join((@sprintf("%+.8f", x) for x in wp), "  ")
+	end
 
 
 

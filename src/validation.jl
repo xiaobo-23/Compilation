@@ -4,7 +4,6 @@
 # Hamiltonian, and helpers `validate_circuit` / `validate_reference` that
 # bundle the per-state measurements for the post-optimization report.
 
-
 using ITensors
 using ITensorMPS
 
@@ -12,10 +11,11 @@ include("plaquette.jl")
 include("honeycomb.jl")
 
 
+
 # Note: ITensor's "iY" is the real matrix i·Y, so (iY)·(iY) = -I and the
 # MPO built from these ops equals **-Wp**. Recover ⟨Wp⟩ via -real(inner(…)).
 const PLAQUETTE_OPS = ("iY", "Z", "X", "X", "Z", "iY")
-
+const PLAQUETTE_INTERFEROMETER = ["iY", "Z", "X", "iY", "Z", "X"]
 
 """
     plaquette_mpo(p_sites, sites) -> MPO
@@ -168,20 +168,43 @@ function energy_mpo(sites; Nx::Integer, Ny::Integer,
 end
 
 
+"""
+    measure_energy(ψ::MPS, H::MPO) -> Float64
+
+Energy expectation `⟨ψ|H|ψ⟩` (real part). Cheap, a single MPO–MPS
+contraction, so it is safe to call on every sweep.
+"""
+measure_energy(ψ::MPS, H::MPO) = real(inner(ψ', H, ψ))
+
 
 """
-    measure_energy(ψ::MPS, H::MPO) -> NamedTuple
+    energy_variance(ψ::MPS, H::MPO) -> Float64
 
-Return `(; E, variance)` where `E = ⟨ψ|H|ψ⟩` and
-`variance = ⟨ψ|H²|ψ⟩ - E²`. The variance is small when ψ is close to an
-eigenstate of H — useful as a quality check independent of fidelity.
+Energy variance `⟨ψ|H²|ψ⟩ - ⟨ψ|H|ψ⟩²` (real part). Small when ψ is close
+to an eigenstate of H, a fidelity-independent quality check.
+
+Expensive: `⟨H²⟩` contracts H twice, ≈ one extra factor of the MPO bond
+dimension over `measure_energy`. Call only when you explicitly want the
+variance (e.g. the final report), never inside the per-sweep loop.
 """
-function measure_energy(ψ::MPS, H::MPO)
+function measure_variance(ψ::MPS, H::MPO)
     E  = real(inner(ψ', H, ψ))
     H2 = real(inner(H, ψ, H, ψ))
-    return (; E, variance = H2 - E^2)
+    return H2 - E^2
 end
 
+
+# """
+#     measure_energy(ψ::MPS, H::MPO) -> NamedTuple
+
+# Return `(; E, variance)` where `E = ⟨ψ|H|ψ⟩` and `variance = ⟨ψ|H²|ψ⟩ - E²`. 
+# The variance is small when ψ is close to an eigenstate of H, useful as a quality check independent of fidelity.
+# """
+# function measure_energy(ψ::MPS, H::MPO)
+#     E  = real(inner(ψ', H, ψ))
+#     H2 = real(inner(H, ψ, H, ψ))
+#     return (; E, variance = H2 - E^2)
+# end
 
 
 """
@@ -206,21 +229,23 @@ function validate_circuit(circuit_gates, ψ_initial::MPS;
     end
     normalize!(ψ_opt)
 
-    
-    # Measure ⟨Wp⟩ on every plaquette on the compiled MPS
-    sites = siteinds(ψ_opt)
+    # Measure ⟨Wp⟩ on every plaquette based on the optimized state
+    sites      = siteinds(ψ_opt)
     plaquettes = hexagonal_plaquettes(length(sites), Ny)
     wp(ψ, p)   = -real(inner(ψ', plaquette_mpo(p, sites), ψ))
-    wp_opt    = [wp(ψ_opt, p) for p in plaquettes]
+    wp_opt     = [wp(ψ_opt, p) for p in plaquettes]
 
 
     # Energy & variance of the compiled state
-    en      = measure_energy(ψ_opt, Hamiltonian)
-    E_opt   = en.E
-    var_opt = en.variance
+    E_opt   = measure_energy(ψ_opt, Hamiltonian)
+    return (; E_opt, wp_opt, plaquettes)
 
-    
-    return (; E_opt, var_opt, wp_opt, plaquettes)
+
+    # # Energy & variance of the compiled state
+    # E_opt   = measure_energy(ψ_opt, Hamiltonian)
+    # var_opt = measure_variance(ψ_opt, Hamiltonian)
+
+    # return (; E_opt, var_opt, wp_opt, plaquettes)
 end
 
 
@@ -248,10 +273,8 @@ function validate_reference(ψ_T; Ny::Integer, Hamiltonian)
 
 
     # Energy & variance 
-    en      = measure_energy(ψ_T, Hamiltonian)
-    E_target   = en.E
-    var_target = en.variance
+    E_target   = measure_energy(ψ_T, Hamiltonian)
+    var_target = measure_variance(ψ_T, Hamiltonian)
 
-    
     return (; E_target, var_target, wp_target, plaquettes)
 end
