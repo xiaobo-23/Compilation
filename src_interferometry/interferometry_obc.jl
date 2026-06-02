@@ -113,11 +113,6 @@ let
 
     lattice = interferometry_lattice_obc(Nx, Ny, N, width_profile)
     number_of_bonds = length(lattice)
-
-    # println("\nPrinting bonds on the interferometry lattice:")
-    # for (idx, bond) in enumerate(lattice)
-    #     @show idx, bond.s1, bond.s2
-    # end
     println("\n")
   
   
@@ -128,11 +123,6 @@ let
 
     wedge = interferometry_wedge(Nx, Ny, N, width_profile)
     number_of_wedges = length(wedge)
-
-    # println("\nPrinting wedges on the interferometry lattice:")
-    # for (idx, wedge) in enumerate(wedge)
-    #     @show idx, wedge.s1, wedge.s2, wedge.s3
-    # end 
     println("\n")
 
 
@@ -236,7 +226,7 @@ let
 
 
     # Set up hyperparameters used in the DMRG simulations, including bond dimensions, cutoff etc.
-    nsweeps = 3
+    nsweeps = 1
     maxdim  = [20, 60, 100, 500, 800, 1000]
     cutoff  = [1E-10]
     eigsolve_krylovdim = 50
@@ -284,7 +274,7 @@ let
     println(repeat("*", 100))
     println("Measure expectation values of the plaquette operators on each hexagon")
 
-    plaquette_ops     = ["Z", "iY", "X", "Z", "iY", "X"]
+    plaquette_ops     = ["iY", "Z", "X", "iY", "Z", "X"]
     plaquette_refs    = interferometry_plaquette_reference_obc(N, Nx_unit, width_profile, x_gauge)
     plaquette_indices = interferometry_plaquette_obc(width_profile, x_gauge, plaquette_refs)
     @timeit time_machine "plaquette operators" begin

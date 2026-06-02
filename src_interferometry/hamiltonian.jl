@@ -34,18 +34,18 @@ end
 Return two-body interaction for the Kitaev flavor of bond `b`, or `nothing` if
 the bond doesn't match any expected pattern. Dispatch is:
 
-    even-x column                       → z-bond  (Sz, Sz)
-    odd-x column, |s2-s1| == Ny         → x-bond  (Sx, Sx)
-    odd-x column, |s2-s1| == Ny - 1     → y-bond  (Sy, Sy)
+    even-x column                       → z-bond  (Y, Y)
+    odd-x column, |s2-s1| == Ny         → x-bond  (X, X)
+    odd-x column, |s2-s1| == Ny - 1     → y-bond  (Z, Z)
 """
 function bond_operator(b::LatticeBond, x_gauge, Ny::Int)
     x = column_index(b.s1, x_gauge)
     if iseven(x)
-        return ("Z", "Z")
+        return ("Y", "Y")
     elseif abs(b.s1 - b.s2) == Ny
         return ("X", "X")
     elseif abs(b.s1 - b.s2) == Ny - 1
-        return ("Y", "Y")
+        return ("Z", "Z")
     else
         return nothing
     end
@@ -62,10 +62,10 @@ by wedge `w`. Encodes the dispatch table in the comment above.
 """
 function wedge_operators(w::WedgeBond, x_odd::Bool, Ny::Int)
     if abs(w.s1 - w.s3) == 1
-        return x_odd ? ("Y", "Z", "X") : ("X", "Z", "Y")
+        return x_odd ? ("Z", "Y", "X") : ("X", "Y", "Z")
     elseif x_odd
-        return abs(w.s3 - w.s2) == Ny ? ("Z", "Y", "X") : ("Z", "X", "Y")
+        return abs(w.s3 - w.s2) == Ny ? ("Y", "Z", "X") : ("Y", "X", "Z")
     else
-        return abs(w.s2 - w.s1) == Ny ? ("X", "Y", "Z") : ("Y", "X", "Z")
+        return abs(w.s2 - w.s1) == Ny ? ("X", "Z", "Y") : ("Z", "X", "Y")
     end
 end
