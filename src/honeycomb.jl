@@ -647,11 +647,11 @@ function honeycomb_Cstyle_wedge(Nx::Int, Ny::Int; yperiodic=false)
 	end
 
 	
-	# # Display the three-spin interaction terms for debugging purposes
+	# Display the three-spin interaction terms for debugging purposes
 	# for (_, w) in enumerate(wedge)
 	# 	@show w.s1, w.s2, w.s3
 	# end
-	# # @show wedge
+	# @show wedge
 
 	return wedge
 end

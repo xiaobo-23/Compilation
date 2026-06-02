@@ -21,10 +21,10 @@ include("gates_update.jl")
 
 
 
+
 # ─── Set up parameters for multithreading and parallelization ────────────
 BLAS.set_num_threads(8)
 @info "BLAS configuration" vendor=BLAS.vendor() config=BLAS.get_config() threads=BLAS.get_num_threads()
-# println()
 
 
 

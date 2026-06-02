@@ -31,6 +31,12 @@ function plaquette_mpo(p_sites, sites)
 end
 
 
+function interferometer_mpo(p_sites, sites)
+    os = OpSum()
+    os += Tuple(Iterators.flatten(zip(PLAQUETTE_INTERFEROMETER, p_sites)))
+    return MPO(os, sites)
+end
+
 
 """
     measure_plaquettes(ψ::MPS, sites; Ny::Integer) -> NamedTuple
@@ -48,6 +54,31 @@ function measure_plaquettes(ψ::MPS, sites; Ny::Integer)
 end
 
 
+
+function measure_interferometer_plaquettes(ψ::MPS, sites,
+                            plaquette_indices::AbstractMatrix{Int},
+                            plaquette_ops::AbstractVector{<:AbstractString};
+                            imag_tol::Real = 1e-8)
+    n_iY = count(==("iY"), plaquette_ops)
+    iseven(n_iY) || error("Odd number of 'iY' factors → operator is non-Hermitian")
+    sign = real(im^n_iY)            # = -1 for the standard two-iY string
+
+    nplaq = size(plaquette_indices, 1)
+    vals  = zeros(Float64, nplaq)
+
+    for p in 1:nplaq
+        idx  = @view plaquette_indices[p, :]
+        os_w = OpSum()
+        add!(os_w, 1.0, Iterators.flatten(zip(plaquette_ops, idx))...)
+        W = MPO(os_w, sites)
+
+        z = inner(ψ', W, ψ)
+        abs(imag(z)) < imag_tol ||
+            @warn "Plaquette $p has non-negligible imaginary part" imag(z)
+        vals[p] = sign * real(z)
+    end
+    return vals
+end
 
 """
     energy_mpo(sites; Nx, Ny, Jx = 1.0, Jy = 1.0, Jz = 1.0, κ = 0.0,
@@ -194,19 +225,6 @@ function measure_variance(ψ::MPS, H::MPO)
 end
 
 
-# """
-#     measure_energy(ψ::MPS, H::MPO) -> NamedTuple
-
-# Return `(; E, variance)` where `E = ⟨ψ|H|ψ⟩` and `variance = ⟨ψ|H²|ψ⟩ - E²`. 
-# The variance is small when ψ is close to an eigenstate of H, useful as a quality check independent of fidelity.
-# """
-# function measure_energy(ψ::MPS, H::MPO)
-#     E  = real(inner(ψ', H, ψ))
-#     H2 = real(inner(H, ψ, H, ψ))
-#     return (; E, variance = H2 - E^2)
-# end
-
-
 """
     validate_circuit(circuit_gates, sites, state; 
     Ny::Integer, Hamiltonian, cutoff::Real = 1e-10) -> NamedTuple
@@ -217,7 +235,7 @@ then measure on the compiled MPS:
   - energy `E = ⟨ψ|H|ψ⟩` and variance `⟨H²⟩ - E²` against the Kitaev
     Hamiltonian built with `(Jx, Jy, Jz, κ)`.
 
-Returns `(; ψ_opt, E_opt, var_opt, wp_opt, plaquettes)`.
+Returns `(; E_opt, wp_opt, plaquettes)`.
 """
 function validate_circuit(circuit_gates, ψ_initial::MPS; 
     Ny::Integer, Hamiltonian, cutoff::Real = 1e-10)
@@ -236,7 +254,7 @@ function validate_circuit(circuit_gates, ψ_initial::MPS;
     wp_opt     = [wp(ψ_opt, p) for p in plaquettes]
 
 
-    # Energy & variance of the compiled state
+    # Compute the energy of the optimized state 
     E_opt   = measure_energy(ψ_opt, Hamiltonian)
     return (; E_opt, wp_opt, plaquettes)
 
@@ -244,7 +262,6 @@ function validate_circuit(circuit_gates, ψ_initial::MPS;
     # # Energy & variance of the compiled state
     # E_opt   = measure_energy(ψ_opt, Hamiltonian)
     # var_opt = measure_variance(ψ_opt, Hamiltonian)
-
     # return (; E_opt, var_opt, wp_opt, plaquettes)
 end
 
