@@ -59,7 +59,7 @@ const N::Int         = Nx * Ny - N_CONSTRICTION   # = 66 total sites
 const Jx::Float64 = 1.0
 const Jy::Float64 = 1.0
 const Jz::Float64 = 1.0
-const κ::Float64  = -0.4
+const κ::Float64  = -0.2
 const α::Float64  = 4.0                              # constriction-bond coupling enhancement
 
 
@@ -93,7 +93,7 @@ let
     # push!(width_profile, 3)
 
 
-    # Example 2: Narrow constrictions on Lx = 9, Ly = 4 lattice
+    # Example 2: Design 10 plaquettes between constrictions on Lx = 9, Ly = 4 lattice
     constriction₁ = [17, 20]
     constriction₂ = [47, 50]
     width_profile = [3, 4, 4, 3, 4, 4, 3, 4, 4, 4, 4, 3, 4, 4, 3, 4, 4, 3]
@@ -130,11 +130,8 @@ let
     number_of_wedges = length(wedge)
 
     # println("\nPrinting wedges on the interferometry lattice:")
-    # for idx in 1:length(wedge)
-    #   if isassigned(wedge, idx)
-    #     tmp = wedge[idx]
-    #     @show idx, tmp.s1, tmp.s2, tmp.s3
-    #   end
+    # for (idx, wedge) in enumerate(wedge)
+    #     @show idx, wedge.s1, wedge.s2, wedge.s3
     # end 
     println("\n")
 
@@ -165,15 +162,15 @@ let
             ops == nothing && continue
 
             scale = unordered_pair(b.s1, b.s2) ∈ constriction_bond_set ? α : 1.0
-            J = ops[1] == "Sx" ? Jx : 
-                ops[1] == "Sy" ? Jy : Jz
+            J = ops[1] == "X" ? Jx : 
+                ops[1] == "Y" ? Jy : Jz
 
             os .+= -scale * J, ops[1], b.s1, ops[2], b.s2
             @info "Two-body term" sites=(b.s1, b.s2) op=ops[1] coupling=-scale * J
 
-            ops[1] == "Sx" && (xbond += 1)
-            ops[1] == "Sy" && (ybond += 1)  
-            ops[1] == "Sz" && (zbond += 1)
+            ops[1] == "X" && (xbond += 1)
+            ops[1] == "Y" && (ybond += 1)  
+            ops[1] == "Z" && (zbond += 1)
         end
 
 
@@ -207,7 +204,7 @@ let
             os .+= κ, op1, w.s1, op2, w.s2, op3, w.s3
             @info "Three-spin term" sites=(w.s1, w.s2, w.s3) ops=(op1, op2, op3)
             @debug "Three-spin term" sites=(w.s1, w.s2, w.s3) ops=(op1, op2, op3)
-            @assert Set((op1, op2, op3)) == Set(("Sx", "Sy", "Sz")) "wedge_operators returned non-permutation $((op1,op2,op3)) for wedge $(w)"
+            @assert Set((op1, op2, op3)) == Set(("X", "Y", "Z")) "wedge_operators returned non-permutation $((op1,op2,op3)) for wedge $(w)"
             
             # Count the number of three-spin interaction terms
             wedge_count += 1
@@ -239,7 +236,7 @@ let
 
 
     # Set up hyperparameters used in the DMRG simulations, including bond dimensions, cutoff etc.
-    nsweeps = 2
+    nsweeps = 3
     maxdim  = [20, 60, 100, 500, 800, 1000]
     cutoff  = [1E-10]
     eigsolve_krylovdim = 50
@@ -293,20 +290,20 @@ let
     @timeit time_machine "plaquette operators" begin
         plaquette_vals    = measure_plaquettes(ψ, sites, plaquette_indices, plaquette_ops)
     end
-    
-
-
-    # ------- Compute the variance of the energy to check how good the ground-state wavefunction is ------------------------
-    println(repeat("*", 100))
-    println("Compute the variance of the energy to check how good the ground-state wavefunction is")
-
-    @timeit time_machine "compute the variance" begin
-      H2 = inner(H, ψ, H, ψ)
-      E₀ = inner(ψ', H, ψ)
-      variance = real(H2) - real(E₀)^2
-    end
-    println("Variance of the energy is $variance")
     println("\n")
+
+
+    # # ------- Compute the variance of the energy to check how good the ground-state wavefunction is ------------------------
+    # println(repeat("*", 100))
+    # println("Compute the variance of the energy to check how good the ground-state wavefunction is")
+
+    # @timeit time_machine "compute the variance" begin
+    #   H2 = inner(H, ψ, H, ψ)
+    #   E₀ = inner(ψ', H, ψ)
+    #   variance = real(H2) - real(E₀)^2
+    # end
+    # println("Variance of the energy is $variance")
+    # println("\n")
 
 
 

@@ -41,11 +41,11 @@ the bond doesn't match any expected pattern. Dispatch is:
 function bond_operator(b::LatticeBond, x_gauge, Ny::Int)
     x = column_index(b.s1, x_gauge)
     if iseven(x)
-        return ("Sz", "Sz")
+        return ("Z", "Z")
     elseif abs(b.s1 - b.s2) == Ny
-        return ("Sx", "Sx")
+        return ("X", "X")
     elseif abs(b.s1 - b.s2) == Ny - 1
-        return ("Sy", "Sy")
+        return ("Y", "Y")
     else
         return nothing
     end
@@ -62,10 +62,10 @@ by wedge `w`. Encodes the dispatch table in the comment above.
 """
 function wedge_operators(w::WedgeBond, x_odd::Bool, Ny::Int)
     if abs(w.s1 - w.s3) == 1
-        return x_odd ? ("Sy", "Sz", "Sx") : ("Sx", "Sz", "Sy")
+        return x_odd ? ("Y", "Z", "X") : ("X", "Z", "Y")
     elseif x_odd
-        return abs(w.s3 - w.s2) == Ny ? ("Sz", "Sy", "Sx") : ("Sz", "Sx", "Sy")
+        return abs(w.s3 - w.s2) == Ny ? ("Z", "Y", "X") : ("Z", "X", "Y")
     else
-        return abs(w.s2 - w.s1) == Ny ? ("Sx", "Sy", "Sz") : ("Sy", "Sx", "Sz")
+        return abs(w.s2 - w.s1) == Ny ? ("X", "Y", "Z") : ("Y", "X", "Z")
     end
 end
