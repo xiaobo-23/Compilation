@@ -1,6 +1,5 @@
 # 6/1/2026
-# Helper functions that set up the indices for the plaquettes in the interferometry lattice
-# Helper functions that compute the expectation values of the plaquette operators
+# Helper functions that compute the expectation values of the plaquette operators on the interferometer
 
 
 """

@@ -226,7 +226,7 @@ let
 
 
     # Set up hyperparameters used in the DMRG simulations, including bond dimensions, cutoff etc.
-    nsweeps = 1
+    nsweeps = 10
     maxdim  = [20, 60, 100, 500, 800, 1000]
     cutoff  = [1E-10]
     eigsolve_krylovdim = 50
@@ -322,17 +322,17 @@ let
  
 
     # ------- Save the ground-state wavefunction and various observables to an HDF5 file -----------------------------------
-    # h5open("data/interferometry_Nx$(Nx_unit)_Ny$(Ny_unit)_kappa$(κ).h5", "cw") do file
-    #     write(file, "psi", ψ)
-    #     # write(file, "E0", energy)
-    #     # write(file, "E0_bond", E_bond)
-    #     # write(file, "E0_wedge", E_wedge)
-    #     # write(file, "E0variance", variance)
-    #     # write(file, "Ehist", custom_observer.ehistory)
-    #     # write(file, "Bond", custom_observer.chi)
-    #     write(file, "chi", linkdims(ψ))
-    #     write(file, "plaquette", plaquette_vals)
-    # end
+    h5open("data/interferometer_input_Nx$(Nx_unit)_Ny$(Ny_unit)_kappa$(κ).h5", "cw") do file
+        write(file, "psi", ψ)
+        write(file, "E0", energy)
+        # write(file, "E0_bond", E_bond)
+        # write(file, "E0_wedge", E_wedge)
+        # write(file, "E0variance", variance)
+        # write(file, "Ehist", custom_observer.ehistory)
+        # write(file, "Bond", custom_observer.chi)
+        write(file, "chi", linkdims(ψ))
+        write(file, "plaquette", plaquette_vals)
+    end
 
   return
 end
