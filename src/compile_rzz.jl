@@ -13,13 +13,11 @@ using Printf
 
 include("compute_cost_function.jl")
 include("gates_initialization.jl")
-include("plaquette.jl")
 include("validation.jl")
 include("cached_environment.jl")
 include("gates_update.jl")
 # include("update_gates.jl")
-
-
+# include("plaquette.jl")
 
 
 # ─── Set up parameters for multithreading and parallelization ────────────

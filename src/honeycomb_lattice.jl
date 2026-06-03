@@ -269,7 +269,7 @@ end
 
 
 
-## 07/23/2024
+# 07/23/2024
 function honeycomb_lattice_rings_reorder(Nx::Int, Ny::Int; yperiodic=false)::Lattice
 	"""
 		Using the ring ordering scheme
