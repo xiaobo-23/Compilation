@@ -17,9 +17,9 @@
 using ITensors
 using ITensorMPS
 
-include("plaquette.jl")        # hexagonal_plaquettes, interferometry_plaquette_{reference_obc,obc}
-include("honeycomb.jl")        # LatticeBond/WedgeBond/Lattice + honeycomb lattice/wedge builders
-include("hamiltonian.jl")      # cluster_energy_mpo, interferometer_energy_mpo, cumulative_gauge, …
+include("plaquette.jl")                # hexagonal_plaquettes, interferometry_plaquette_{reference_obc,obc}
+include("honeycomb_lattice.jl")        # LatticeBond/WedgeBond/Lattice + honeycomb lattice/wedge builders
+include("hamiltonian.jl")              # cluster_energy_mpo, interferometer_energy_mpo, cumulative_gauge, …
 
 
 
@@ -132,18 +132,18 @@ function interferometer_geometry(sites; Nx::Integer, Ny::Integer, Nx_unit::Integ
         κ::Real = 0.0, α::Real = 4.0)
     H       = interferometer_energy_mpo(sites; Nx, Ny, width_profile, constrictions,
                                         Jx, Jy, Jz, κ, α)
-    x_gauge = cumulative_gauge(width_profile)
-    refs    = interferometry_plaquette_reference_obc(length(sites), Nx_unit, width_profile, x_gauge)
-    M       = interferometry_plaquette_obc(width_profile, x_gauge, refs)
+    x_gauge             = cumulative_gauge(width_profile)
+    refs                = interferometry_plaquette_reference_obc(length(sites), Nx_unit, width_profile, x_gauge)
+    plaquette_indices   = interferometry_plaquette_obc(width_profile, x_gauge, refs)
     return (; H,
-              plaquettes    = [M[i, :] for i in 1:size(M, 1)],
+              plaquettes    = [plaquette_indices[i, :] for i in 1:size(plaquette_indices, 1)],
               plaquette_ops = PLAQUETTE_INTERFEROMETER)
 end
 
 
 # ── Validators (geometry-agnostic; take a geometry context) ───────────────
 """
-    validate_circuit(circuit_gates, ψ_initial, geom; cutoff = 1e-10) -> NamedTuple
+    validate_circuit(circuit_gates, ψ_initial, geom; cutoff = 1e-6) -> NamedTuple
 
 Apply `circuit_gates` to `ψ_initial`, then measure per-plaquette ⟨Wp⟩ and
 energy `E_opt = ⟨ψ|geom.H|ψ⟩`. Variance is opt-in via `measure_variance`.

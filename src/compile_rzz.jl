@@ -16,8 +16,7 @@ include("gates_initialization.jl")
 include("validation.jl")
 include("cached_environment.jl")
 include("gates_update.jl")
-# include("update_gates.jl")
-# include("plaquette.jl")
+
 
 
 # ─── Set up parameters for multithreading and parallelization ────────────
@@ -30,7 +29,7 @@ BLAS.set_num_threads(8)
 const model = (; Nx = 8, Ny = 3, Jx = 1.0, Jy = 1.0, Jz = 1.0, κ = -0.4, yperiodic = true)
 const N = model.Nx * model.Ny            # Total number of qubits
 const cutoff = 1e-4
-const nsweeps = 2
+const nsweeps = 100
 const default_iters = 25                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
 const stop_criteria = 1e-4               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
 const per_stage_stop_criteria = 1e-6     
@@ -71,49 +70,9 @@ let
 
 
 	#  ── Construct the Hamiltonian MPO for energy measurement. ─────────────── 
-	H = energy_mpo(sites; model...)
+	geom = honeycomb_geometry(sites; model...)
 	
 	
-	
-	# -----------------------------------------------------------------------------------------
-	# Project the initial MPS into the same topological sector as the target MPS
-	# by applying ∏ₚ (1 + Wₚ)/√2, then align the global phase.
-	# -----------------------------------------------------------------------------------------
-	# println(repeat("-", 100))
-	# println("Flux-sector projection of the initial MPS")
-	# println(repeat("-", 100))
-	
-	
-	# Build one (1 + Wp)/√2 tensor per plaquette.
-	# indices = hexagonal_plaquettes(N, 4)
-	# projection = ITensor[]
-	# for p_sites in indices
-	# 	s = sites[p_sites]
-		
-	# 	id_tensor = prod(op("Id", tmp_site) for tmp_site in s)
-	# 	pauli_tensor = op("Y", s[1]) * op("Z", s[2]) * op("X", s[3]) * op("X", s[4]) * op("Z", s[5]) * op("Y", s[6])
-
-	# 	hj = (id_tensor + pauli_tensor) / sqrt(2)
-	# 	push!(projection, hj)
-	# end
-
-	
-	# Apply the projector and align the global phase to maximize Re⟨ψ_T | ψ₀⟩.
-	# ψ₀ = apply(projection, ψ₀; cutoff=cutoff)
-	# fidelity₀ = inner(ψ_T, ψ₀)
-	# ϕ_phase = angle(fidelity₀)
-	# ψ₀[1] = ψ₀[1] * exp(-im * ϕ_phase)
-	# fidelity₀_rotated = inner(ψ_T, ψ₀)	
-	
-
-	# Diagnostics: bond dimensions, overlaps, and per-plaquette ⟨Wp⟩.
-	# result_proj = measure_plaquettes(ψ₀, sites; Ny = 4)
-	# evals₀      = result_proj.wp
-	# @printf "  bond dimensions     : %s\n" linkdims(ψ₀)
-	# @printf "  ⟨ψ_T | ψ₀⟩          : %+.6f %+.6fi\n" real(fidelity₀)   imag(fidelity₀)
-	# @printf "  ⟨ψ_T | ψ₀⟩ rotated  : %+.6f %+.6fi\n" real(fidelity₀_rotated) imag(fidelity₀_rotated)
-	# println("⟨Wp⟩ on each hexagon:           ", evals₀)
-
 
 	
 	# -----------------------------------------------------------------------------------------
@@ -124,8 +83,8 @@ let
 	#   2. two-qubit gates on even bonds (i, i+1), i = 2, 4, 6, …
 	# -----------------------------------------------------------------------------------------
 	# Configure the brickwall gate pattern of Rzz(θ) gates
-	n_initial = 2
-	n_total   = 2
+	n_initial = 5
+	n_total   = 5
 	brickwall_block = [
 		[[i, i + 1] for i in 1 : 2 : N - 1],
 		[[i, i + 1] for i in 2 : 2 : N - 1],
@@ -287,7 +246,7 @@ let
 
 			# Compute the cost function after each sweep — bind once, use for both push! and printf.
 			fidelity_sweep = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, 1e-6)
-			en             = validate_circuit(circuit_gates, ψ₀; Ny = model.Ny, Hamiltonian = H, cutoff = 1e-6)
+			en             = validate_circuit(circuit_gates, ψ₀, geom; cutoff = 1e-6)
 
 			push!(cost_function,   fidelity_sweep)
 			push!(energy_trace,    en.E_opt)
@@ -333,8 +292,8 @@ let
 	# ------- Validate the compiled circuit against the target MPS ---------------------------------------------
 	# Measure energy + ⟨Wp⟩ on both states. Variance is opt-in (expensive), so we
 	# compute it once here rather than inside the per-sweep validation.
-	compiled = validate_circuit(circuit_gates, ψ₀; Ny = model.Ny, Hamiltonian = H, cutoff = cutoff)
-	target   = validate_reference(ψ_T;             Ny = model.Ny, Hamiltonian = H)
+	compiled = validate_circuit(circuit_gates, ψ₀, geom; cutoff = cutoff)
+	target   = validate_reference(ψ_T, geom)
 	ΔE           = compiled.E_opt - target.E_target
 
 	
