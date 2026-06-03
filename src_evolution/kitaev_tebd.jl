@@ -128,7 +128,8 @@ let
     E0 = measure_energy(ψ_T, H)
     @printf "step %3d  t=%.4f  E=%+.8f  ΔE/|E0|=%.2e  χ=%d\n" 0 0.0 E0 0.0 maxlinkdim(ψ_T)
     for step in 1:nsteps
-        ψ_T = apply(two_body_gates, ψ_T; cutoff=cutoff_tebd)
+        # ψ_T = apply(two_body_gates, ψ_T; cutoff=cutoff_tebd)
+        ψ_T = apply(two_body_gates, ψ_T; maxdim=maxdim_tebd)
         normalize!(ψ_T)
 
         E = measure_energy(ψ_T, H)
