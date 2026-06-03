@@ -51,28 +51,31 @@ const model = (;
 )
 const N = model.Nx * model.Ny - 6        # 66 total sites
 const cutoff = 1e-4
-const nsweeps = 100
-const default_iters = 25                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
-const stop_criteria = 1e-6               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
-const per_stage_stop_criteria = 1e-8     
+const validation_cutoff = 1e-8
+const nsweeps = 10
+const default_iters = 35                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
+const stop_criteria = 1e-8               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
+const per_stage_stop_criteria = 1e-10     
 
 
 
 let
 	# -----------------------------------------------------------------------------------------
 	# Set up and optimize single-qubit & two-qubit gates to variationally
-	# compile the wave function of the Kitaev model on a cylinder.
+	# compile the wave function of the Kitaev model on the interferometer.
 	# -----------------------------------------------------------------------------------------
 	println(repeat("-", 100))
 	println("Variational circuit compilation: ground state preparation for the interferometer based on the Kitaev honeycomb model")
 	println(repeat("-", 100), "\n")
 
 
+
 	# Load the target ground-state MPS for the Kitaev model on a honeycomb lattice 
 	# target_mps_path = joinpath(@__DIR__, "..", "data", 
 	# 	"kitaev_honeycomb_kappa-0.4_Lx4_Ly3.h5")
 
-	# Load the target ground-state MPS for the Kitaev model on a honeycomb lattice 
+
+	# Load the target ground-state MPS for the Kitaev model on the interferometer lattice
 	target_mps_path = joinpath(@__DIR__, "..", "data", 
 		"interferometer_input_Nx9_Ny3_kappa-0.2.h5")
 
@@ -80,11 +83,12 @@ let
 		ψ = read(file, "psi", MPS)
 		return ψ, siteinds(ψ)
 	end
+	@assert length(sites) == N "loaded $(length(sites)) sites but model implies N=$N — wrong file or params?"
 	@info "Loaded target MPS" path=target_mps_path N=length(sites) maxlinkdim=maxlinkdim(ψ_T)
-	println("")
+	println("\n")
 
 
-	# ── Initialize the trial MPS as a product state. ─────────────────────────
+	# ------- Initialize the trial MPS as a product state ------------------------------------------------
 	# A random MPS is also supported (see below) but the all-Up product state is
 	# the cleanest reference for a Kitaev variational compilation: it has zero
 	# entanglement, so any entanglement in ψ_opt comes from the optimized circuit.
@@ -154,8 +158,8 @@ let
 	cost_function = Float64[]
 	energy_trace = Float64[]
 	plaquette_trace = Vector{Float64}[]
-	optimization_trace = Float64[]
-	fidelity_trace = Float64[]
+	# optimization_trace = Float64[]
+	# fidelity_trace = Float64[]
 	stage_starts = Int[]
 
 	
@@ -275,8 +279,8 @@ let
 
 
 			# Compute the cost function after each sweep — bind once, use for both push! and printf.
-			fidelity_sweep = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, 1e-6)
-			en             = validate_circuit(circuit_gates, ψ₀, geom; cutoff = 1e-6)
+			fidelity_sweep = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff=cutoff)
+			en             = validate_circuit(circuit_gates, ψ₀, geom; cutoff=cutoff)
 
 			push!(cost_function,   fidelity_sweep)
 			push!(energy_trace,    en.E_opt)
@@ -297,22 +301,12 @@ let
 	end
 
 
-
-	# Verifying the optimization results: report the cost function and energy trace during the optimization process.
-	# @show cost_function
-	# @show energy_trace
-
-
-	# -----------------------------------------------------------------------------------------
-	# Save the optimization results in an HDF5 file for future analysis and visualization
-	# -----------------------------------------------------------------------------------------
+	# ------- Save the optimization results in an HDF5 file ----------------------------------------------
 	# output_filename = "data/kitaev/kitaev_compilation_kappa-0.4_L$(n_total)_Rzz_test.h5"
 	# h5open(output_filename, "w") do file
 	# 	write(file, "cost_function", cost_function)
 	# 	write(file, "energy_trace", energy_trace)
 	# 	write(file, "plaquette_trace", Matrix(reduce(hcat, plaquette_trace)'))
-	# 	write(file, "optimization_trace", optimization_trace)
-	# 	write(file, "fidelity_trace", fidelity_trace)
 	# 	write(file, "stage_starts", stage_starts)
 	# end
 
@@ -322,7 +316,7 @@ let
 	# ------- Validate the compiled circuit against the target MPS ---------------------------------------------
 	# Measure energy + ⟨Wp⟩ on both states. Variance is opt-in (expensive), so we
 	# compute it once here rather than inside the per-sweep validation.
-	compiled = validate_circuit(circuit_gates, ψ₀, geom; cutoff = cutoff)
+	compiled = validate_circuit(circuit_gates, ψ₀, geom; cutoff = validation_cutoff)
 	target   = validate_reference(ψ_T, geom)
 	ΔE           = compiled.E_opt - target.E_target
 
@@ -334,7 +328,6 @@ let
 		ΔE0 = abs(target.E_target - E0_stored)
 		ΔE0 < 1e-6 || @warn "Computed target energy disagrees with stored E0" E0_stored target.E_target ΔE0
 	end
-
 
 
 
