@@ -1,21 +1,25 @@
 # 5/10/2026
 # Time evolution of the Kitaev honeycomb model with three-spin interactions using the TEBD algrithm
 
-# ---- Imports ----
+
+# ------- Imports libraries -------------------------------------------------------------------------------------------
 using ITensors
 using ITensorMPS
 using HDF5
 using MKL
 using LinearAlgebra
 using TimerOutputs
+using Printf
 
 
-# ---- Local helpers ----
-include("HoneycombLattice.jl")
+# ------- Local helpers -----------------------------------------------------------------------------------------------
+include("honeycomb_lattice.jl")
 include("build_gates.jl")
+include("hamiltonian.jl")
 
 
-# ---- BLAS / LAPACK threading ----
+
+# ------- BLAS / LAPACK threading -------------------------------------------------------------------------------------
 const NTHREADS = 8
 BLAS.set_num_threads(NTHREADS)
 
@@ -23,7 +27,8 @@ BLAS.set_num_threads(NTHREADS)
 @show BLAS.get_num_threads()
 
 
-# ---- Lattice: 4 × 3 × 2 honeycomb cluster on a cylinder (24 qubits, YPBC) ----
+
+# ------- Lattice: 4 × 3 × 2 honeycomb cluster on a cylinder ----------------------------------------------------------
 const Nx_unit = 4                     # Unit cells along x
 const Ny_unit = 3                     # Unit cells along y (cylinder width)
 const Nx      = 2 * Nx_unit           # Sublattice-resolved columns of sites
@@ -31,67 +36,68 @@ const Ny      = Ny_unit               # Sites per ring along y
 const N       = Nx * Ny               # Total qubits = 24
 
 
-# ---- Kitaev couplings ----
+
+# ------- Kitaev couplings --------------------------------------------------------------------------------------------
 const Jx = 1.0
 const Jy = 1.0
 const Jz = 1.0
-const κ  = -0.4                       # Three-spin interaction strength
+const κ  = -0.2                      # Three-spin interaction strength
 
 
-# ---- TEBD hyperparameters ----
-const dt          = 0.05              # Trotter step
-const t_max       = 0.1               # Total real-time evolution
+
+# ------- TEBD hyperparameters ----------------------------------------------------------------------------------------
+const dt          = 0.1              # Trotter step
+const t_max       = 1.0              # Total real-time evolution
 const nsteps      = round(Int, t_max / dt)
-const cutoff_tebd = 1e-10             # MPS truncation cutoff per gate apply
-const maxdim_tebd = 256               # Maximum bond dimension during TEBD
+const cutoff_tebd = 1e-14            # MPS truncation cutoff per gate apply
+const maxdim_tebd = 500              # Maximum bond dimension during TEBD
 
 
-# ---- Gates for TEBD time evolution ----
+
+# ------- Gates for TEBD time evolution -------------------------------------------------------------------------------
 const TwoBodyGroup = @NamedTuple{ops::NTuple{2,String}, bonds::Vector{NTuple{2,Int}}}
 
 const two_body_gate_groups = TwoBodyGroup[
-    (ops = ("Sx", "Sx"),
+    (ops = ("X", "X"),
      bonds = [(1, 2), (3, 4), (5, 6),
               (7, 8), (9,10), (11,12),
               (13,14), (15,16), (17,18),
               (19,20), (21,22), (23,24)]),
 
-    (ops = ("Sz", "Sz"),
+    (ops = ("Z", "Z"),
      bonds = [(2, 3), (4, 5), (1, 6),     # block 1
               (8, 9), (10,11), (7,12),    # block 2
               (14,15), (16,17), (13,18),  # block 3
               (20,21), (22,23), (19,24)]),# block 4
 
-    (ops = ("Sy", "Sy"),
+    (ops = ("Y", "Y"),
      bonds = [(2, 7), (4, 9), (6,11),     # blocks 1↔2
               (8,13), (10,15), (12,17),   # blocks 2↔3
               (14,19), (16,21), (18,23)]),# blocks 3↔4
 ]
 
-const COUPLING = Dict(("Sx","Sx") => Jx,
-                      ("Sy","Sy") => Jy,
-                      ("Sz","Sz") => Jz)
+const COUPLING = Dict(("X","X") => Jx,
+                      ("Y","Y") => Jy,
+                      ("Z","Z") => Jz)
 
 
 
-# ---- Profiling ----
+
+# ------- Profiling ---------------------------------------------------------------------------------------------------
 const time_machine = TimerOutput()
 
 
 
-
-
 let
-    #-------------------------------------------------------------------------------------------------------
-    # Read in the ground-state wave function an MPS
-    #-------------------------------------------------------------------------------------------------------
-    file = h5open("../data/kitaev_honeycomb_kappa-0.4_Lx4_Ly3.h5", "r")
+    # -------- Read in the ground-state wavefunction as an MPS ------------------------------------------------------------
+    file = h5open("../data/kitaev_honeycomb_Lx4_Ly3_kappa0.0.h5", "r")
     ψ_T = read(file, "psi", MPS)
     sites = siteinds(ψ_T)
     close(file)
 
+
     if length(ψ_T) != N
-    error("Loaded MPS has length $(length(ψ_T)); expected N=$N for $(Nx_unit)×$(Ny_unit)×2 cluster")
+        error("Loaded MPS has length $(length(ψ_T)); expected N=$N for $(Nx_unit)×$(Ny_unit)×2 cluster")
     end
     @info "Loaded MPS" length=length(ψ_T) maxlinkdim=maxlinkdim(ψ_T)
 
@@ -104,55 +110,31 @@ let
     #   variance = H2 - E₀^2
     # end
 
-
     # println("\nGround-state energy: $E₀")
     # println("\nVariance of the energy is $variance")
     # println("\n")
   
   
-  
-    #-------------------------------------------------------------------------------------------------------
-    # Set up gates for time evolution using 2nd-order Trotter decomposition
-    #-------------------------------------------------------------------------------------------------------
+    
+    # -------- Set up gates for time evolution using 2nd-order Trotter decomposition --------------------------------------
     two_body_gates = build_two_body_gates(sites, two_body_gate_groups, COUPLING, dt)
     append!(two_body_gates, reverse(two_body_gates))      # 2nd-order Trotter: apply gates in reverse order for the second half of the step
+    
+    
+    
+    
+    # -------- Time evolve the state using TEBD ----------------------------------------------------------------------------
+    H  = hamiltonian_cluster(sites; Nx, Ny, Jx, Jy, Jz, yperiodic=true)
+    E0 = measure_energy(ψ_T, H)
+    @printf "step %3d  t=%.4f  E=%+.8f  ΔE/|E0|=%.2e  χ=%d\n" 0 0.0 E0 0.0 maxlinkdim(ψ_T)
     for step in 1:nsteps
-        ψ_T = apply(two_body_gates, ψ_T; cutoff=cutoff_tebd, maxdim=maxdim_tebd)
+        ψ_T = apply(two_body_gates, ψ_T; cutoff=cutoff_tebd)
         normalize!(ψ_T)
+
+        E = measure_energy(ψ_T, H)
+        @printf "step %3d  t=%.4f  E=%+.8f  ΔE/|E0|=%.2e  χ=%d\n" step step*dt E abs((E-E0)/abs(E0)) maxlinkdim(ψ_T)
     end
   
-
-
-  # """Construc the Kitaev Hamiltonian as an MPO using the OpSum interface"""
-  # os = OpSum()
-  
-  # # Set up the two-body interaction terms in the Hamiltonian
-  # # Count the numbers of ⟨SxSx⟩, ⟨SySy⟩, ⟨SzSz⟩ bonds
-  # xbond, ybond, zbond = 0, 0, 0        
-
-  # for b in lattice
-  #   xcoordinate = 2 * div(b.s1 - 1, 2 * Ny) + (iseven(b.s1) ? 2 : 1)
-  #   ycoordinate = div(mod(b.s1 - 1, 2 * Ny), 2) + 1
-  #   # @show b.s1, xcoordinate, ycoordinate
-
-  #   if mod(xcoordinate, 2) == 0
-  #     os .+= -Jy, "Sy", b.s1, "Sy", b.s2
-  #     @show b.s1, b.s2, "Sy"
-  #     ybond += 1
-  #   else
-  #     if b.s2 - b.s1 == 1
-  #       os .+= -Jx, "Sx", b.s1, "Sx", b.s2
-  #       @show b.s1, b.s2, "Sx"
-  #       xbond += 1
-  #     else
-  #       os .+= -Jz, "Sz", b.s1, "Sz", b.s2
-  #       @show b.s1, b.s2, "Sz"
-  #       zbond += 1
-  #     end
-  #   end
-  # end
-  # # @show xbond, ybond, zbond
-
 
   # # Set up the three-spin interaction terms in the Hamiltonian
   # count = 0
