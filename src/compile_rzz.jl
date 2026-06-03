@@ -19,20 +19,42 @@ include("gates_update.jl")
 
 
 
-# ─── Set up parameters for multithreading and parallelization ────────────
+# ------- Set up parameters for multithreading and parallelization -----------------------------------
 BLAS.set_num_threads(8)
 @info "BLAS configuration" vendor=BLAS.vendor() config=BLAS.get_config() threads=BLAS.get_num_threads()
 
 
 
-# ─── Compilation parameters ──────────────────────────────────────────────
-const model = (; Nx = 8, Ny = 3, Jx = 1.0, Jy = 1.0, Jz = 1.0, κ = -0.4, yperiodic = true)
-const N = model.Nx * model.Ny            # Total number of qubits
+# ------- Compilation parameters for the Kitaev cluster ----------------------------------------------
+# const model = (; Nx = 8, Ny = 3, Jx = 1.0, Jy = 1.0, Jz = 1.0, κ = -0.4, yperiodic = true)
+# const N = model.Nx * model.Ny            # Total number of qubits
+# const cutoff = 1e-4
+# const nsweeps = 100
+# const default_iters = 25                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
+# const stop_criteria = 1e-4               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
+# const per_stage_stop_criteria = 1e-6     
+
+
+
+# ------- Compilation parameters for the interferometer ----------------------------------------------
+const Nx_unit = 9                        # honeycomb unit cells along x
+const Ny_unit = 3                        # honeycomb unit cells along y
+const model = (;
+    Nx       = 2 * Nx_unit,              # 18 lattice columns
+    Ny       = Ny_unit + 1,              # 4  lattice rows
+    Nx_unit  = Nx_unit,                  # passed through for the plaquette refs
+    Jx = 1.0, Jy = 1.0, Jz = 1.0,
+    κ = -0.2,                            # ← MUST match the interferometer DMRG run
+    α = 4.0,                             # ← MUST match the interferometer DMRG run
+    width_profile = [3, 4, 4, 3, 4, 4, 3, 4, 4, 4, 4, 3, 4, 4, 3, 4, 4, 3],
+    constrictions = ([17, 20], [47, 50]),
+)
+const N = model.Nx * model.Ny - 6        # 66 total sites
 const cutoff = 1e-4
 const nsweeps = 100
 const default_iters = 25                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
-const stop_criteria = 1e-4               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
-const per_stage_stop_criteria = 1e-6     
+const stop_criteria = 1e-6               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
+const per_stage_stop_criteria = 1e-8     
 
 
 
@@ -46,9 +68,13 @@ let
 	println(repeat("-", 100), "\n")
 
 
-	# Load the target ground-state MPS (e.g. Kitaev honeycomb).
+	# Load the target ground-state MPS for the Kitaev model on a honeycomb lattice 
+	# target_mps_path = joinpath(@__DIR__, "..", "data", 
+	# 	"kitaev_honeycomb_kappa-0.4_Lx4_Ly3.h5")
+
+	# Load the target ground-state MPS for the Kitaev model on a honeycomb lattice 
 	target_mps_path = joinpath(@__DIR__, "..", "data", 
-		"kitaev_honeycomb_kappa-0.4_Lx4_Ly3.h5")
+		"interferometer_input_Nx9_Ny3_kappa-0.2.h5")
 
 	ψ_T, sites = h5open(target_mps_path, "r") do file
 		ψ = read(file, "psi", MPS)
@@ -69,9 +95,13 @@ let
 	# ψ₀	= random_mps(sites, state; linkdims = 8)  # bond-dimension-8 random MPS
 
 
-	#  ── Construct the Hamiltonian MPO for energy measurement. ─────────────── 
-	geom = honeycomb_geometry(sites; model...)
+	# ------- Construct the Hamiltonian as an MPO to measure the energy ----------------------------------
+	# Set up the Hamiltonian MPO for the Kitaev model on the interferometer geometry
+	# geom = honeycomb_geometry(sites; model...)
 	
+	
+	# Set up the Hamiltonian MPO for the Kitaev model on the interferometer geometry
+	geom = interferometer_geometry(sites; model...)
 	
 
 	
@@ -299,14 +329,16 @@ let
 	
 	
 	# Cross-check the target energy against the stored DMRG ground-state energy.
-	E0_stored = h5open(target_mps_path, "r") do f; read(f, "E0"); end
-	ΔE0       = abs(target.E_target - E0_stored)
-	ΔE0 < 1e-6 || @warn "Computed target energy disagrees with stored E0" E0_stored target.E_target ΔE0
+	E0_stored = h5open(target_mps_path, "r") do f; haskey(f, "E0") ? read(f, "E0") : nothing; end
+	if E0_stored !== nothing
+		ΔE0 = abs(target.E_target - E0_stored)
+		ΔE0 < 1e-6 || @warn "Computed target energy disagrees with stored E0" E0_stored target.E_target ΔE0
+	end
 
 
 
 
-	# -------- Report-------------------------------------------------------------------------------------------
+	# -------- Report ------------------------------------------------------------------------------------------
 	section(title) = (println("\n", repeat("-", 100)); println(title); println(repeat("-", 100)))
 
 	section("Energy, variance, fidelity")
