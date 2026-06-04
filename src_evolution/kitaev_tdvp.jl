@@ -11,12 +11,15 @@ using MKL
 using LinearAlgebra
 using Printf
 
+
 include("hamiltonian.jl")    # hamiltonian_cluster(sites; Nx, Ny, Jx, Jy, Jz, yperiodic)
 include("build_gates.jl")    # build_two_body_gates(sites; Nx, Ny, Jx, Jy, Jz, yperiodic, dt)
+
 
 # ------- BLAS threading ----------------------------------------------------
 BLAS.set_num_threads(8)
 @info "BLAS configuration" vendor=BLAS.vendor() threads=BLAS.get_num_threads()
+
 
 # ------- Lattice + couplings (must match the loaded ground state) ----------
 const Nx_unit = 4
@@ -26,12 +29,15 @@ const Ny = Ny_unit               # 3 sites per ring
 const N  = Nx * Ny               # 24
 const Jx, Jy, Jz = 1.0, 1.0, 1.0
 
+
 # ------- Evolution hyperparameters -----------------------------------------
 const dt        = 0.05
 const t_max     = 1.0
 const nsteps    = round(Int, t_max / dt)
 const cutoff_ev = 1e-10
 const maxdim_ev = 256
+
+
 
 let
     # ---- Load the same ground state for both evolutions ------------------
@@ -42,13 +48,17 @@ let
     @assert length(ψ0) == N "loaded MPS length $(length(ψ0)) ≠ N=$N"
     @info "Loaded initial state" N=length(ψ0) maxlinkdim=maxlinkdim(ψ0)
 
+    
+    
     # ---- Shared Hamiltonian (MPO) ---------------------------------------
     H = hamiltonian_cluster(sites; Nx, Ny, Jx, Jy, Jz, yperiodic=true)
 
+    
     # ---- TEBD gates from the SAME dispatch as H (2nd-order Trotter) ------
-    half      = build_two_body_gates(sites; Nx, Ny, Jx, Jy, Jz, yperiodic=true, dt=dt)
-    tebd_step = vcat(half, reverse(half))     # symmetric Strang, O(dt³) per step
+    tebd_step = build_tebd_step(sites; Nx, Ny, Jx, Jy, Jz, dt, yperiodic=true)
 
+
+   
     # ---- Independent copies for the two methods -------------------------
     ψ_tebd = deepcopy(ψ0)
     ψ_tdvp = deepcopy(ψ0)
@@ -59,6 +69,12 @@ let
     # ---- Time evolve, measuring energy + mutual overlap each step -------
     @printf "%-4s %-7s | %-13s %-9s | %-13s %-9s | %-11s\n" "step" "t" "E_tebd" "ΔE/|E0|" "E_tdvp" "ΔE/|E0|" "|⟨T|V⟩|"
     @printf "%-4d %-7.3f | %-13.8f %-9.1e | %-13.8f %-9.1e | %-11.8f\n" 0 0.0 E0 0.0 E0 0.0 1.0
+
+
+
+    E0_tebd = Float64[]
+    E0_tdvp = Float64[]
+
 
     for step in 1:nsteps
         # TEBD: one 2nd-order Trotter step
@@ -72,8 +88,29 @@ let
         E_t = energy(ψ_tebd)
         E_v = energy(ψ_tdvp)
         ov  = abs(inner(ψ_tebd, ψ_tdvp))
+        push!(E0_tebd, E_t)
+        push!(E0_tdvp, E_v)
         @printf "%-4d %-7.3f | %-13.8f %-9.1e | %-13.8f %-9.1e | %-11.8f\n" step step*dt E_t abs((E_t-E0)/abs(E0)) E_v abs((E_v-E0)/abs(E0)) ov
     end
+
+    
+    # ------- Store the results --------------------------------------------------
+    times = collect(dt .* (1:nsteps))      # time at each recorded step (matches the traces)
+
+    output_path = joinpath(@__DIR__, "data", "evolution",
+        "tebd_vs_tdvp_Lx$(Nx_unit)_Ly$(Ny_unit).h5")
+    mkpath(dirname(output_path))
+
+    h5open(output_path, "w") do f
+        # time + traces (nsteps entries each)
+        write(f, "t",        times)
+        write(f, "E_tebd",   E0_tebd)
+        write(f, "E_tdvp",   E0_tdvp)
+    end
+    @info "Saved evolution comparison" output_path nsteps maxχ_tebd=maximum(chi_tebd) maxχ_tdvp=maximum(chi_tdvp)
+
+    
+
 
     return
 end

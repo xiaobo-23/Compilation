@@ -46,40 +46,11 @@ const κ  = -0.2                      # Three-spin interaction strength
 
 
 # ------- TEBD hyperparameters ----------------------------------------------------------------------------------------
-const dt          = 0.1              # Trotter step
+const dt          = 0.05             # Trotter step
 const t_max       = 1.0              # Total real-time evolution
 const nsteps      = round(Int, t_max / dt)
 const cutoff_tebd = 1e-14            # MPS truncation cutoff per gate apply
 const maxdim_tebd = 500              # Maximum bond dimension during TEBD
-
-
-
-# ------- Gates for TEBD time evolution -------------------------------------------------------------------------------
-const TwoBodyGroup = @NamedTuple{ops::NTuple{2,String}, bonds::Vector{NTuple{2,Int}}}
-
-const two_body_gate_groups = TwoBodyGroup[
-    (ops = ("X", "X"),
-     bonds = [(1, 2), (3, 4), (5, 6),
-              (7, 8), (9,10), (11,12),
-              (13,14), (15,16), (17,18),
-              (19,20), (21,22), (23,24)]),
-
-    (ops = ("Z", "Z"),
-     bonds = [(2, 3), (4, 5), (1, 6),     # block 1
-              (8, 9), (10,11), (7,12),    # block 2
-              (14,15), (16,17), (13,18),  # block 3
-              (20,21), (22,23), (19,24)]),# block 4
-
-    (ops = ("Y", "Y"),
-     bonds = [(2, 7), (4, 9), (6,11),     # blocks 1↔2
-              (8,13), (10,15), (12,17),   # blocks 2↔3
-              (14,19), (16,21), (18,23)]),# blocks 3↔4
-]
-
-const COUPLING = Dict(("X","X") => Jx,
-                      ("Y","Y") => Jy,
-                      ("Z","Z") => Jz)
-
 
 
 
@@ -117,9 +88,7 @@ let
   
     
     # -------- Set up gates for time evolution using 2nd-order Trotter decomposition --------------------------------------
-    two_body_gates = build_two_body_gates(sites, two_body_gate_groups, COUPLING, dt)
-    append!(two_body_gates, reverse(two_body_gates))      # 2nd-order Trotter: apply gates in reverse order for the second half of the step
-    
+    step = build_tebd_step(sites; Nx, Ny, Jx, Jy, Jz, dt, yperiodic=true)
     
     
     
@@ -128,95 +97,29 @@ let
     E0 = measure_energy(ψ_T, H)
     @printf "step %3d  t=%.4f  E=%+.8f  ΔE/|E0|=%.2e  χ=%d\n" 0 0.0 E0 0.0 maxlinkdim(ψ_T)
     for step in 1:nsteps
-        # ψ_T = apply(two_body_gates, ψ_T; cutoff=cutoff_tebd)
-        ψ_T = apply(two_body_gates, ψ_T; maxdim=maxdim_tebd)
+        ψ_T = apply(step, ψ_T; cutoff=cutoff_tebd)
         normalize!(ψ_T)
+
 
         E = measure_energy(ψ_T, H)
         @printf "step %3d  t=%.4f  E=%+.8f  ΔE/|E0|=%.2e  χ=%d\n" step step*dt E abs((E-E0)/abs(E0)) maxlinkdim(ψ_T)
     end
-  
-
-  # # Set up the three-spin interaction terms in the Hamiltonian
-  # count = 0
-  # for w in wedge 
-  #   # Calculate the (x, y) coordinates of the site n based on C-style ordering
-  #   tmp = div(w.s2 - 1, 2 * Ny)
-  #   x = 2 * tmp + mod(w.s2 - 1, 2) + 1
-  #   y = mod(div(w.s2 - 1, 2), Ny) + 1
-
-  #   if mod(x, 2) == 1
-  #     if w.s1 - w.s2 == 1 && w.s3 - w.s2 == 2 * Ny - 1
-  #       os .+= κ, "Sx", w.s1, "Sy", w.s2, "Sz", w.s3
-  #       @show w.s1, w.s2, w.s3, "Sx", "Sy", "Sz"
-  #       count += 1
-  #     end
-
-  #     if w.s3 - w.s2 == 1 && w.s2 - w.s1 == 1
-  #       os .+= κ, "Sz", w.s1, "Sy", w.s2, "Sx", w.s3
-  #       @show w.s1, w.s2, w.s3, "Sz", "Sy", "Sx"
-  #       count += 1
-  #     end 
-
-  #     if x != 1 && w.s2 - w.s1 == 2 * Ny - 1
-  #       if w.s3 - w.s2 == 1
-  #         os .+= κ, "Sy", w.s1, "Sz", w.s2, "Sx", w.s3
-  #         @show w.s1, w.s2, w.s3, "Sy", "Sz", "Sx"
-  #         count += 1  
-  #       else
-  #         os .+= κ, "Sy", w.s1, "Sx", w.s2, "Sz", w.s3
-  #         @show w.s1, w.s2, w.s3, "Sy", "Sx", "Sz"
-  #         count += 1  
-  #       end
-  #     end
-  #   else
-  #     if w.s3 - w.s2 == w.s2 - w.s1 == 1
-  #       os .+= κ, "Sx", w.s1, "Sy", w.s2, "Sz", w.s3
-  #       @show w.s1, w.s2, w.s3, "Sx", "Sy", "Sz"
-  #       count += 1
-  #     end
-
-  #     if w.s2 - w.s3 == 1 && w.s2 - w.s1 == 2 * Ny - 1
-  #       os .+= κ, "Sz", w.s1, "Sy", w.s2, "Sx", w.s3
-  #       @show w.s1, w.s2, w.s3, "Sz", "Sy", "Sx"
-  #       count += 1
-  #     end
-
-  #     if x != Nx && w.s3 - w.s2 == 2 * Ny - 1
-  #       if w.s2 - w.s1 == 1
-  #         os .+= κ, "Sx", w.s1, "Sz", w.s2, "Sy", w.s3
-  #         @show w.s1, w.s2, w.s3, "Sx", "Sz", "Sy"
-  #         count += 1
-  #       else
-  #         os .+= κ, "Sz", w.s1, "Sx", w.s2, "Sy", w.s3
-  #         @show w.s1, w.s2, w.s3, "Sz", "Sx", "Sy"
-  #         count += 1
-  #       end
-  #     end
-  #   end
-  # end
-  # @show count 
-
-  # if count != length(wedge)
-  #   error("The number of three-spin interaction terms generated does not match the expected number.")
-  # end
 
 
 
-
-  # # Save the results to an HDF5 file for later use in quantum circuit compilation
-  # @show time_machine
-  # h5open("../data/kitaev_honeycomb_kappa-0.4_Lx6_Ly4.h5", "w") do file
-  #   write(file, "psi", ψ)
-  #   write(file, "E0", energy)
-  #   write(file, "variance", variance)
-  #   write(file, "chi", linkdims(ψ))
-  #   # write(file, "Sz0", Sz₀)
-  #   # write(file, "Sz",  Sz)
-  #   # write(file, "Czz", zzcorr)
-  #   # write(file, "plaquette", plaquette_evals)
-  #   write(file, "loop", loop_evals)
-  # end
+    # # Save the results to an HDF5 file for later use in quantum circuit compilation
+    # @show time_machine
+    # h5open("../data/kitaev_honeycomb_kappa-0.4_Lx6_Ly4.h5", "w") do file
+    #   write(file, "psi", ψ)
+    #   write(file, "E0", energy)
+    #   write(file, "variance", variance)
+    #   write(file, "chi", linkdims(ψ))
+    #   # write(file, "Sz0", Sz₀)
+    #   # write(file, "Sz",  Sz)
+    #   # write(file, "Czz", zzcorr)
+    #   # write(file, "plaquette", plaquette_evals)
+    #   write(file, "loop", loop_evals)
+    # end
 
 
   return
