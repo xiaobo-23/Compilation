@@ -36,8 +36,8 @@ function compute_cost_function(psi_ket::MPS, psi_bra::MPS, input_gates::Vector{I
 end
 
 
-# # Define the function to compute the cost function using two matrix product states
-# # and multiple layers of two-qubit gates as input
+# Define the function to compute the cost function using two matrix product states
+# and multiple layers of two-qubit gates as input
 # function compute_cost_function_multi_layers(psi_ket::MPS, psi_bra::MPS, input_gates::Vector{Any}, 
 #   input_cutoff::Float64 = 1e-14)
 
@@ -51,7 +51,8 @@ end
 # end
 
 
-# ── Multi-layer cost ────────────────────────────────────────────────────────
+
+# ------- Multi-layer cost ---------------------------------------------------------------------------
 # Two methods (one for the legacy `Vector{Any}` callers, one for the
 # type-clean `Vector{Vector{ITensor}}` callers) sharing a single body.
 # Once the legacy callers are migrated, replace both with the one definition
@@ -72,9 +73,8 @@ end
 # Used by compile_su4.jl, compile_rzz.jl.
 function compute_cost_function_multi_layers(psi_ket::MPS, psi_bra::MPS,
                                             input_gates::Vector{Any},
-                                            input_cutoff::Float64 = 1e-14)
-    return _compute_cost_function_multi_layers_impl(psi_ket, psi_bra,
-                                                    input_gates, input_cutoff)
+                                            input_cutoff::Float64 = 1e-12)
+    return _compute_cost_function_multi_layers_impl(psi_ket, psi_bra, input_gates, input_cutoff)
 end
 
 
@@ -82,7 +82,6 @@ end
 # Used by compile_pauli.jl.
 function compute_cost_function_multi_layers(psi_ket::MPS, psi_bra::MPS,
                                             input_gates::Vector{Vector{ITensor}},
-                                            input_cutoff::Float64 = 1e-14)
-    return _compute_cost_function_multi_layers_impl(psi_ket, psi_bra,
-                                                    input_gates, input_cutoff)
+                                            input_cutoff::Float64 = 1e-12)
+    return _compute_cost_function_multi_layers_impl(psi_ket, psi_bra, input_gates, input_cutoff)
 end

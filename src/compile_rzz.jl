@@ -25,59 +25,58 @@ BLAS.set_num_threads(8)
 
 
 
-# ------- Compilation parameters for the Kitaev cluster ----------------------------------------------
-# const model = (; Nx = 8, Ny = 3, Jx = 1.0, Jy = 1.0, Jz = 1.0, κ = -0.4, yperiodic = true)
-# const N = model.Nx * model.Ny            # Total number of qubits
-# const cutoff = 1e-4
-# const nsweeps = 100
-# const default_iters = 25                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
-# const stop_criteria = 1e-4               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
-# const per_stage_stop_criteria = 1e-6     
+# ------- Choose the geometry ------------------------------------------------
+const GEOMETRY = :cluster        # :cluster or :interferometer
 
 
-
-# ------- Compilation parameters for the interferometer ----------------------------------------------
-const Nx_unit = 9                        # honeycomb unit cells along x
-const Ny_unit = 3                        # honeycomb unit cells along y
-const model = (;
-    Nx       = 2 * Nx_unit,              # 18 lattice columns
-    Ny       = Ny_unit + 1,              # 4  lattice rows
-    Nx_unit  = Nx_unit,                  # passed through for the plaquette refs
-    Jx = 1.0, Jy = 1.0, Jz = 1.0,
-    κ = -0.2,                            # ← MUST match the interferometer DMRG run
-    α = 4.0,                             # ← MUST match the interferometer DMRG run
-    width_profile = [3, 4, 4, 3, 4, 4, 3, 4, 4, 4, 4, 3, 4, 4, 3, 4, 4, 3],
-    constrictions = ([17, 20], [47, 50]),
-)
-const N = model.Nx * model.Ny - 6        # 66 total sites
-const cutoff = 1e-4
+# ------- Shared hyperparameters (both geometries) --------------------------
+const cutoff            = 1e-4
 const validation_cutoff = 1e-8
-const nsweeps = 10
-const default_iters = 35                 # Number of iterations for optimizing each layer of two-qubit gates in the sweeping procedure
-const stop_criteria = 1e-8               # Stopping criteria for the optimization of two-qubit gates; if the change of the cost function is smaller than this value, stop the optimization
-const per_stage_stop_criteria = 1e-10     
+const default_iters     = 25
+
+
+# ------- Geometry-specific parameters --------------------------------------
+if GEOMETRY === :cluster
+    const model = (; Nx = 8, Ny = 3, Jx = 1.0, Jy = 1.0, Jz = 1.0, κ = -0.4, yperiodic = true)
+    const N = model.Nx * model.Ny
+	const target_mps_path = joinpath(@__DIR__, "..", "data",
+        "kitaev_honeycomb_kappa-0.4_Lx4_Ly3.h5")
+    const nsweeps = 20
+    const stop_criteria = 1e-4
+    const per_stage_stop_criteria = 1e-6
+elseif GEOMETRY === :interferometer
+    const Nx_unit = 9
+    const Ny_unit = 3
+    const model = (; Nx = 2*Nx_unit, Ny = Ny_unit + 1, Nx_unit = Nx_unit,
+                     Jx = 1.0, Jy = 1.0, Jz = 1.0, κ = -0.2, α = 4.0,
+                     width_profile = [3,4,4,3,4,4,3,4,4,4,4,3,4,4,3,4,4,3],
+                     constrictions = ([17,20], [47,50]))
+    const N = model.Nx * model.Ny - 6
+	const target_mps_path = joinpath(@__DIR__, "..", "data",
+        "interferometer_input_Nx9_Ny3_kappa-0.2.h5")
+    const nsweeps = 2
+    const stop_criteria = 1e-9
+    const per_stage_stop_criteria = 1e-10
+else
+    error("GEOMETRY must be :cluster or :interferometer, got $GEOMETRY")
+end
+
 
 
 
 let
-	# -----------------------------------------------------------------------------------------
-	# Set up and optimize single-qubit & two-qubit gates to variationally
-	# compile the wave function of the Kitaev model on the interferometer.
-	# -----------------------------------------------------------------------------------------
-	println(repeat("-", 100))
+	# -----------------------------------------------------------------------------------------------------------------------------------------------------------
+	# Set up single-qubit and two-qubit gates and optimize the circuit variationally to compile the target MPS
+	# -----------------------------------------------------------------------------------------------------------------------------------------------------------
+	println(repeat("-", 150))
 	println("Variational circuit compilation: ground state preparation for the interferometer based on the Kitaev honeycomb model")
-	println(repeat("-", 100), "\n")
+	println(repeat("-", 150), "\n")
 
 
 
-	# Load the target ground-state MPS for the Kitaev model on a honeycomb lattice 
-	# target_mps_path = joinpath(@__DIR__, "..", "data", 
-	# 	"kitaev_honeycomb_kappa-0.4_Lx4_Ly3.h5")
-
-
-	# Load the target ground-state MPS for the Kitaev model on the interferometer lattice
-	target_mps_path = joinpath(@__DIR__, "..", "data", 
-		"interferometer_input_Nx9_Ny3_kappa-0.2.h5")
+	# Load the target ground-state MPS (file selected by GEOMETRY above).
+    isfile(target_mps_path) ||
+        error("target MPS not found: $target_mps_path  (check GEOMETRY / data dir)")
 
 	ψ_T, sites = h5open(target_mps_path, "r") do file
 		ψ = read(file, "psi", MPS)
@@ -88,10 +87,10 @@ let
 	println("\n")
 
 
-	# ------- Initialize the trial MPS as a product state ------------------------------------------------
+
+	# ------- Initialize the trial MPS as a product state -------------------------------------------------------------------------------------------------------
 	# A random MPS is also supported (see below) but the all-Up product state is
-	# the cleanest reference for a Kitaev variational compilation: it has zero
-	# entanglement, so any entanglement in ψ_opt comes from the optimized circuit.
+	# the cleanest reference for a variational compilation of the FM Kitaev model
 	random_seed = 123
 	Random.seed!(random_seed)
 	state = fill("Up", N)
@@ -99,16 +98,13 @@ let
 	# ψ₀	= random_mps(sites, state; linkdims = 8)  # bond-dimension-8 random MPS
 
 
-	# ------- Construct the Hamiltonian as an MPO to measure the energy ----------------------------------
-	# Set up the Hamiltonian MPO for the Kitaev model on the interferometer geometry
-	# geom = honeycomb_geometry(sites; model...)
-	
-	
-	# Set up the Hamiltonian MPO for the Kitaev model on the interferometer geometry
-	geom = interferometer_geometry(sites; model...)
+
+	# ------- Construct the Hamiltonian as an MPO to measure the energy -----------------------------------------------------------------------------------------
+	geom = GEOMETRY === :cluster ? 
+		honeycomb_geometry(sites; model...) :
+		interferometer_geometry(sites; model...)
 	
 
-	
 	# -----------------------------------------------------------------------------------------
 	# Build the variational brickwall ansatz used to compile the target MPS.
 	#
@@ -158,8 +154,6 @@ let
 	cost_function = Float64[]
 	energy_trace = Float64[]
 	plaquette_trace = Vector{Float64}[]
-	# optimization_trace = Float64[]
-	# fidelity_trace = Float64[]
 	stage_starts = Int[]
 
 	
@@ -172,14 +166,48 @@ let
 			end
 		end
 
+
 		# Record the sweep at which this stage starts 
 		push!(stage_starts, length(cost_function) + 1)
 
 
 		# Tracking per-stage early-stop to avoid over-optimizing each layer and getting stuck in local minima
 		fidelity_prev_sweep = -Inf
+		
+		# Precompute the intermediate MPS states that are used in optimizing each layer
+		ψ_left_collection = Vector{MPS}(undef, n_active)
+		ψ_left_collection[1] = ψ₀
+		for idx in 2 : n_active
+			tmp_ψ₀ = deepcopy(ψ₀)
+			for tmp_idx in 1 : idx - 1
+				tmp_ψ₀ = apply(circuit_gates[tmp_idx], tmp_ψ₀; cutoff=cutoff)
+			end
+			normalize!(tmp_ψ₀)
+			ψ_left_collection[idx] = tmp_ψ₀
+		end
+		
+
+		ψ_right_collection = Vector{MPS}(undef, n_active)
+		ψ_right_collection[n_active] = ψ_T
+
+		for idx in n_active - 1 : -1 : 1
+			tmp_ψ₀ = deepcopy(ψ_T)
+			
+			for tmp_idx in length(circuit_gates) : -1 : idx 
+				temporary_gates = deepcopy(circuit_gates[tmp_idx])
+				for gate_idx in 1 : length(temporary_gates)
+					temporary_gates[gate_idx] = dag(temporary_gates[gate_idx])
+					swapprime!(temporary_gates[gate_idx], 0 => 1)
+				end
+				tmp_ψ₀ = apply(temporary_gates, tmp_ψ₀; cutoff=cutoff)
+			end
+			normalize!(tmp_ψ₀)
+			ψ_right_collection[idx] = tmp_ψ₀	
+		end
+
+		
 		for iteration in 1 : nsweeps 
-			println(repeat("-", 100))
+			println(repeat("-", 150))
 			@printf "Sweep %d/%d\n" iteration nsweeps
 			println("\n")
 
@@ -190,32 +218,35 @@ let
 				M = length(idx_pairs)
 
 				
-				# Compress the optimization circuit from the initial MPS side
-				ψ_left = deepcopy(ψ₀)
-				if layer_idx > 1
-					for idx in 1 : layer_idx - 1
-						ψ_left = apply(circuit_gates[idx], ψ_left; cutoff=cutoff)
-					end
-					normalize!(ψ_left)
-				end
-				# ψ_left = ψ_ket_collection[layer_idx]
+				# # Compress the optimization circuit from the initial MPS side
+				# ψ_left = deepcopy(ψ₀)
+				# if layer_idx > 1
+				# 	for idx in 1 : layer_idx - 1
+				# 		ψ_left = apply(circuit_gates[idx], ψ_left; cutoff=cutoff)
+				# 	end
+				# 	normalize!(ψ_left)
+				# end		
+		
+				
+				# # Compress the optimization circuit from the target MPS side 
+				# ψ_right = deepcopy(ψ_T)
+				# if layer_idx < length(circuit_gates)
+				# 	for tmp_idx in length(circuit_gates):-1:layer_idx + 1
+				# 		temporary_gates = deepcopy(circuit_gates[tmp_idx])
+				# 		for gate_idx in 1 : length(temporary_gates)
+				# 			temporary_gates[gate_idx] = dag(temporary_gates[gate_idx])
+				# 			swapprime!(temporary_gates[gate_idx], 0 => 1)
+				# 		end
+				# 		ψ_right = apply(temporary_gates, ψ_right; cutoff=cutoff)
+				# 	end
+				# 	normalize!(ψ_right)  
+				# end
 				
 				
-				# Compress the optimization circuit from the target MPS side 
-				ψ_right = deepcopy(ψ_T)
-				if layer_idx < length(circuit_gates)
-					for tmp_idx in length(circuit_gates):-1:layer_idx + 1
-						temporary_gates = deepcopy(circuit_gates[tmp_idx])
-						for gate_idx in 1 : length(temporary_gates)
-							temporary_gates[gate_idx] = dag(temporary_gates[gate_idx])
-							swapprime!(temporary_gates[gate_idx], 0 => 1)
-						end
-						ψ_right = apply(temporary_gates, ψ_right; cutoff=cutoff)
-					end
-					normalize!(ψ_right)  
-				end
-				# ψ_right = ψ_bra_collection[layer_idx]
-				
+				# Read in the intermediate MPS states for the current layer of gates
+				ψ_left = ψ_left_collection[layer_idx]
+				ψ_right = ψ_right_collection[layer_idx]
+
 
 				# Precompute the left and right environments for each gate.
 				# ψ_intermediate is no longer needed: ups/dns are built directly
@@ -238,8 +269,7 @@ let
 						new_gate = if length(idx_pairs[k]) == 1
 							update_single_qubit_from_env(E_T, sites[idx_pairs[k][1]])
 						else
-							update_Rzz_from_env(E_T, sites,
-												idx_pairs[k][1], idx_pairs[k][2])
+							update_Rzz_from_env(E_T, sites, idx_pairs[k][1], idx_pairs[k][2])
 						end
 						optimization_gates[k] = new_gate
 
@@ -256,8 +286,7 @@ let
 						new_gate = if length(idx_pairs[k]) == 1
 							update_single_qubit_from_env(E_T, sites[idx_pairs[k][1]])
 						else
-							update_Rzz_from_env(E_T, sites,
-												idx_pairs[k][1], idx_pairs[k][2])
+							update_Rzz_from_env(E_T, sites, idx_pairs[k][1], idx_pairs[k][2])
 						end
 						optimization_gates[k] = new_gate
 
@@ -275,11 +304,33 @@ let
 					end
 					fidelity₁ = fidelity₂
 				end
+
+				# After optimizing the current layer, update the intermediate MPS states for the next layer's optimization
+				if layer_idx > 1
+					ψ_left_collection[layer_idx] = apply(optimization_gates, ψ_left_collection[layer_idx - 1]; cutoff=cutoff)
+				end
 			end
 
 
+			for idx in n_active - 1 : -1 : 1
+				tmp_ψ₀ = deepcopy(ψ_T)
+				
+				for tmp_idx in length(circuit_gates) : -1 : idx 
+					temporary_gates = deepcopy(circuit_gates[tmp_idx])
+					for gate_idx in 1 : length(temporary_gates)
+						temporary_gates[gate_idx] = dag(temporary_gates[gate_idx])
+						swapprime!(temporary_gates[gate_idx], 0 => 1)
+					end
+					tmp_ψ₀ = apply(temporary_gates, tmp_ψ₀; cutoff=cutoff)
+				end
+				normalize!(tmp_ψ₀)
+				ψ_right_collection[idx] = tmp_ψ₀	
+			end
+			
+			
+			
 			# Compute the cost function after each sweep — bind once, use for both push! and printf.
-			fidelity_sweep = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff=cutoff)
+			fidelity_sweep = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
 			en             = validate_circuit(circuit_gates, ψ₀, geom; cutoff=cutoff)
 
 			push!(cost_function,   fidelity_sweep)
@@ -332,7 +383,7 @@ let
 
 
 	# -------- Report ------------------------------------------------------------------------------------------
-	section(title) = (println("\n", repeat("-", 100)); println(title); println(repeat("-", 100)))
+	section(title) = (println("\n", repeat("-", 100)); println(title); println(repeat("-", 150)))
 
 	section("Energy, variance, fidelity")
 	@printf "  %-10s E  = %+.8f   \n"  "target"   target.E_target
