@@ -25,17 +25,17 @@ BLAS.set_num_threads(8)
 
 
 
-# ------- Choose the geometry ------------------------------------------------
-const GEOMETRY = :cluster        # :cluster or :interferometer
+# ------- Choose the geometry ------------------------------------------------------------------------
+const GEOMETRY = :cluster        				 # :cluster or :interferometer
 
 
-# ------- Shared hyperparameters (both geometries) --------------------------
+# ------- Shared hyperparameters (both geometries) ---------------------------------------------------
 const cutoff            = 1e-4
 const validation_cutoff = 1e-8
-const default_iters     = 25
+const default_iters     = 35
 
 
-# ------- Geometry-specific parameters --------------------------------------
+# ------- Geometry-specific parameters ---------------------------------------------------------------
 if GEOMETRY === :cluster
     const model = (; Nx = 8, Ny = 3, Jx = 1.0, Jy = 1.0, Jz = 1.0, κ = -0.4, yperiodic = true)
     const N = model.Nx * model.Ny
@@ -179,15 +179,15 @@ let
 		ψ_left_collection = Vector{MPS}(undef, nlayers)
 		ψ_left_collection[1] = ψ₀          # [2..end] filled just-in-time during the sweep	
 		
-		
+		ψ_right_collection = build_psi_right(circuit_gates, ψ_T; cutoff)  
+
 
 		for iteration in 1 : nsweeps 
 			println(repeat("-", 150))
 			@printf "Sweep %d/%d\n" iteration nsweeps
 			println("\n")
 
-			ψ_right_collection = build_psi_right(circuit_gates, ψ_T; cutoff)   # ← one line, O(n)
-
+			
 			# Optimize each layer of the two-qubit gate in a forward sweeping order 
 			for layer_idx in 1 : length(circuit_gates)
 				optimization_gates = circuit_gates[layer_idx]
@@ -265,12 +265,86 @@ let
 				end
 			end
 
+			# Optimize each layer of the two-qubit gate in a forward sweeping order 
+			for layer_idx in length(circuit_gates) : -1 : 1
+				optimization_gates = circuit_gates[layer_idx]
+				idx_pairs = input_pairs[layer_idx]
+				M = length(idx_pairs)
 
-			# Update the right intermediate MPS states for the next sweep
-			ψ_right_collection = build_psi_right(circuit_gates, ψ_T; cutoff)
+
+				# fresh = deepcopy(ψ₀); for i in 1:layer_idx-1; fresh = apply(circuit_gates[i], fresh; cutoff); end; normalize!(fresh)
+				# @info 1 - abs(inner(fresh, ψ_left_collection[layer_idx])) < 1e-10
+
+				
+				# Read in the left and right intermediate MPS states for optimizing the current layer
+				ψ_left = ψ_left_collection[layer_idx]
+				ψ_right = ψ_right_collection[layer_idx]
+
+				
+				# Precompute the left and right environments for each gate.
+				ups = Vector{ITensor}(undef, M)
+				dns = Vector{ITensor}(undef, M)
+
+				init_ups_left!(ups, ψ_left, ψ_right, idx_pairs)
+				precompute_dns!(dns, ψ_left, ψ_right, optimization_gates, idx_pairs, N)
+
+				
+				# Optimize all gates in the current layer by sweeping
+				fidelity₁ = fidelity₂ = 0
+				for iter_idx in 1:default_iters
+					# Forward sweep from left to right
+					for k in 1 : M
+						E_T = build_env(ups, dns, ψ_left, ψ_right, k, idx_pairs)
+
+						new_gate = if length(idx_pairs[k]) == 1
+							update_single_qubit_from_env(E_T, sites[idx_pairs[k][1]])
+						else
+							update_Rzz_from_env(E_T, sites, idx_pairs[k][1], idx_pairs[k][2])
+						end
+						optimization_gates[k] = new_gate
+
+						if k < M
+							extend_ups!(ups, ψ_left, ψ_right, optimization_gates, idx_pairs, k)
+						end
+					end
+
+
+					# Backward sweep from right to left
+					for k in M : -1 : 1
+						E_T = build_env(ups, dns, ψ_left, ψ_right, k, idx_pairs)
+
+						new_gate = if length(idx_pairs[k]) == 1
+							update_single_qubit_from_env(E_T, sites[idx_pairs[k][1]])
+						else
+							update_Rzz_from_env(E_T, sites, idx_pairs[k][1], idx_pairs[k][2])
+						end
+						optimization_gates[k] = new_gate
+
+						if k > 1
+							contract_dns_from_right!(dns, ψ_left, ψ_right, optimization_gates, idx_pairs, k)
+						end
+					end
+
+
+					fidelity₂ = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
+					if iter_idx > 1 && abs(fidelity₂ - fidelity₁) < stop_criteria
+						println("The change of the cost function is smaller than the stopping criteria. Stop the optimization of gates at layer $(layer_idx).")
+						println([fidelity₁, fidelity₂, abs(fidelity₂ - fidelity₁)])
+						break
+					end
+					fidelity₁ = fidelity₂
+				end
+
+
+				# Update the left intermediate MPS states for the next sweep
+				layer_idx > 1 && (ψ_right_collection[layer_idx - 1] = normalize!(apply(dagger_layer(optimization_gates), ψ_right_collection[layer_idx]; cutoff=cutoff)))
+			end
+
+
+			# # Update the right intermediate MPS states for the next sweep
+			# ψ_right_collection = build_psi_right(circuit_gates, ψ_T; cutoff)
 			
 
-			
 			# Compute the cost function after each sweep — bind once, use for both push! and printf.
 			fidelity_sweep = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
 			en             = validate_circuit(circuit_gates, ψ₀, geom; cutoff=cutoff)
