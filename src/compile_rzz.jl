@@ -41,7 +41,7 @@ if GEOMETRY === :cluster
     const N = model.Nx * model.Ny
 	const target_mps_path = joinpath(@__DIR__, "..", "data",
         "kitaev_honeycomb_kappa-0.4_Lx4_Ly3.h5")
-    const nsweeps = 20
+    const nsweeps = 10
     const stop_criteria = 1e-4
     const per_stage_stop_criteria = 1e-6
 elseif GEOMETRY === :interferometer
@@ -175,25 +175,29 @@ let
 		fidelity_prev_sweep = -Inf
 		
 		# Precompute the intermediate MPS states that are used in optimizing each layer
-		ψ_left_collection = Vector{MPS}(undef, n_active)
-		ψ_left_collection[1] = ψ₀
-		for idx in 2 : n_active
-			tmp_ψ₀ = deepcopy(ψ₀)
-			for tmp_idx in 1 : idx - 1
-				tmp_ψ₀ = apply(circuit_gates[tmp_idx], tmp_ψ₀; cutoff=cutoff)
-			end
-			normalize!(tmp_ψ₀)
-			ψ_left_collection[idx] = tmp_ψ₀
-		end
+		nlayers = length(circuit_gates)
+		ψ_left_collection = Vector{MPS}(undef, nlayers)
+		ψ_left_collection[1] = ψ₀          # [2..end] filled just-in-time during the sweep	
+		
+		# ψ_left_collection = Vector{MPS}(undef, nlayers)
+		# ψ_left_collection[1] = ψ₀
+		# for idx in 2 : nlayers
+		# 	tmp_ψ₀ = deepcopy(ψ₀)
+		# 	for tmp_idx in 1 : idx - 1
+		# 		tmp_ψ₀ = apply(circuit_gates[tmp_idx], tmp_ψ₀; cutoff=cutoff)
+		# 	end
+		# 	normalize!(tmp_ψ₀)
+		# 	ψ_left_collection[idx] = tmp_ψ₀
+		# end
 		
 
-		ψ_right_collection = Vector{MPS}(undef, n_active)
-		ψ_right_collection[n_active] = ψ_T
+		ψ_right_collection = Vector{MPS}(undef, nlayers)
+		ψ_right_collection[nlayers] = ψ_T
 
-		for idx in n_active - 1 : -1 : 1
+		for idx in nlayers - 1 : -1 : 1
 			tmp_ψ₀ = deepcopy(ψ_T)
 			
-			for tmp_idx in length(circuit_gates) : -1 : idx 
+			for tmp_idx in length(circuit_gates) : -1 : idx + 1
 				temporary_gates = deepcopy(circuit_gates[tmp_idx])
 				for gate_idx in 1 : length(temporary_gates)
 					temporary_gates[gate_idx] = dag(temporary_gates[gate_idx])
@@ -218,6 +222,9 @@ let
 				M = length(idx_pairs)
 
 				
+				fresh = deepcopy(ψ₀); for i in 1:layer_idx-1; fresh = apply(circuit_gates[i], fresh; cutoff); end; normalize!(fresh)
+				@info 1 - abs(inner(fresh, ψ_left_collection[layer_idx])) < 1e-10
+
 				# # Compress the optimization circuit from the initial MPS side
 				# ψ_left = deepcopy(ψ₀)
 				# if layer_idx > 1
@@ -306,16 +313,16 @@ let
 				end
 
 				# After optimizing the current layer, update the intermediate MPS states for the next layer's optimization
-				if layer_idx > 1
-					ψ_left_collection[layer_idx] = apply(optimization_gates, ψ_left_collection[layer_idx - 1]; cutoff=cutoff)
+				if layer_idx < nlayers
+					ψ_left_collection[layer_idx + 1] = normalize!(apply(optimization_gates, ψ_left_collection[layer_idx]; cutoff=cutoff))
 				end
 			end
 
 
-			for idx in n_active - 1 : -1 : 1
+			for idx in nlayers - 1 : -1 : 1
 				tmp_ψ₀ = deepcopy(ψ_T)
 				
-				for tmp_idx in length(circuit_gates) : -1 : idx 
+				for tmp_idx in length(circuit_gates) : -1 : idx + 1
 					temporary_gates = deepcopy(circuit_gates[tmp_idx])
 					for gate_idx in 1 : length(temporary_gates)
 						temporary_gates[gate_idx] = dag(temporary_gates[gate_idx])
@@ -327,7 +334,7 @@ let
 				ψ_right_collection[idx] = tmp_ψ₀	
 			end
 			
-			
+
 			
 			# Compute the cost function after each sweep — bind once, use for both push! and printf.
 			fidelity_sweep = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
