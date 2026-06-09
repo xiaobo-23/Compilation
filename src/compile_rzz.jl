@@ -41,7 +41,7 @@ if GEOMETRY === :cluster
     const N = model.Nx * model.Ny
 	const target_mps_path = joinpath(@__DIR__, "..", "data",
         "kitaev_honeycomb_kappa-0.4_Lx4_Ly3.h5")
-    const nsweeps = 10
+    const nsweeps = 20
     const stop_criteria = 1e-4
     const per_stage_stop_criteria = 1e-6
 elseif GEOMETRY === :interferometer
@@ -179,41 +179,14 @@ let
 		ψ_left_collection = Vector{MPS}(undef, nlayers)
 		ψ_left_collection[1] = ψ₀          # [2..end] filled just-in-time during the sweep	
 		
-		# ψ_left_collection = Vector{MPS}(undef, nlayers)
-		# ψ_left_collection[1] = ψ₀
-		# for idx in 2 : nlayers
-		# 	tmp_ψ₀ = deepcopy(ψ₀)
-		# 	for tmp_idx in 1 : idx - 1
-		# 		tmp_ψ₀ = apply(circuit_gates[tmp_idx], tmp_ψ₀; cutoff=cutoff)
-		# 	end
-		# 	normalize!(tmp_ψ₀)
-		# 	ψ_left_collection[idx] = tmp_ψ₀
-		# end
 		
 
-		ψ_right_collection = Vector{MPS}(undef, nlayers)
-		ψ_right_collection[nlayers] = ψ_T
-
-		for idx in nlayers - 1 : -1 : 1
-			tmp_ψ₀ = deepcopy(ψ_T)
-			
-			for tmp_idx in length(circuit_gates) : -1 : idx + 1
-				temporary_gates = deepcopy(circuit_gates[tmp_idx])
-				for gate_idx in 1 : length(temporary_gates)
-					temporary_gates[gate_idx] = dag(temporary_gates[gate_idx])
-					swapprime!(temporary_gates[gate_idx], 0 => 1)
-				end
-				tmp_ψ₀ = apply(temporary_gates, tmp_ψ₀; cutoff=cutoff)
-			end
-			normalize!(tmp_ψ₀)
-			ψ_right_collection[idx] = tmp_ψ₀	
-		end
-
-		
 		for iteration in 1 : nsweeps 
 			println(repeat("-", 150))
 			@printf "Sweep %d/%d\n" iteration nsweeps
 			println("\n")
+
+			ψ_right_collection = build_psi_right(circuit_gates, ψ_T; cutoff)   # ← one line, O(n)
 
 			# Optimize each layer of the two-qubit gate in a forward sweeping order 
 			for layer_idx in 1 : length(circuit_gates)
@@ -221,44 +194,17 @@ let
 				idx_pairs = input_pairs[layer_idx]
 				M = length(idx_pairs)
 
-				
-				fresh = deepcopy(ψ₀); for i in 1:layer_idx-1; fresh = apply(circuit_gates[i], fresh; cutoff); end; normalize!(fresh)
-				@info 1 - abs(inner(fresh, ψ_left_collection[layer_idx])) < 1e-10
 
-				# # Compress the optimization circuit from the initial MPS side
-				# ψ_left = deepcopy(ψ₀)
-				# if layer_idx > 1
-				# 	for idx in 1 : layer_idx - 1
-				# 		ψ_left = apply(circuit_gates[idx], ψ_left; cutoff=cutoff)
-				# 	end
-				# 	normalize!(ψ_left)
-				# end		
-		
+				# fresh = deepcopy(ψ₀); for i in 1:layer_idx-1; fresh = apply(circuit_gates[i], fresh; cutoff); end; normalize!(fresh)
+				# @info 1 - abs(inner(fresh, ψ_left_collection[layer_idx])) < 1e-10
+
 				
-				# # Compress the optimization circuit from the target MPS side 
-				# ψ_right = deepcopy(ψ_T)
-				# if layer_idx < length(circuit_gates)
-				# 	for tmp_idx in length(circuit_gates):-1:layer_idx + 1
-				# 		temporary_gates = deepcopy(circuit_gates[tmp_idx])
-				# 		for gate_idx in 1 : length(temporary_gates)
-				# 			temporary_gates[gate_idx] = dag(temporary_gates[gate_idx])
-				# 			swapprime!(temporary_gates[gate_idx], 0 => 1)
-				# 		end
-				# 		ψ_right = apply(temporary_gates, ψ_right; cutoff=cutoff)
-				# 	end
-				# 	normalize!(ψ_right)  
-				# end
-				
-				
-				# Read in the intermediate MPS states for the current layer of gates
+				# Read in the left and right intermediate MPS states for optimizing the current layer
 				ψ_left = ψ_left_collection[layer_idx]
 				ψ_right = ψ_right_collection[layer_idx]
 
-
+				
 				# Precompute the left and right environments for each gate.
-				# ψ_intermediate is no longer needed: ups/dns are built directly
-				# from ψ_left/ψ_right with gates applied on the fly, so bond
-				# Index IDs are inherited from ψ_left and never drift.
 				ups = Vector{ITensor}(undef, M)
 				dns = Vector{ITensor}(undef, M)
 
@@ -312,27 +258,16 @@ let
 					fidelity₁ = fidelity₂
 				end
 
-				# After optimizing the current layer, update the intermediate MPS states for the next layer's optimization
+
+				# Update the left intermediate MPS states for the next sweep
 				if layer_idx < nlayers
 					ψ_left_collection[layer_idx + 1] = normalize!(apply(optimization_gates, ψ_left_collection[layer_idx]; cutoff=cutoff))
 				end
 			end
 
 
-			for idx in nlayers - 1 : -1 : 1
-				tmp_ψ₀ = deepcopy(ψ_T)
-				
-				for tmp_idx in length(circuit_gates) : -1 : idx + 1
-					temporary_gates = deepcopy(circuit_gates[tmp_idx])
-					for gate_idx in 1 : length(temporary_gates)
-						temporary_gates[gate_idx] = dag(temporary_gates[gate_idx])
-						swapprime!(temporary_gates[gate_idx], 0 => 1)
-					end
-					tmp_ψ₀ = apply(temporary_gates, tmp_ψ₀; cutoff=cutoff)
-				end
-				normalize!(tmp_ψ₀)
-				ψ_right_collection[idx] = tmp_ψ₀	
-			end
+			# Update the right intermediate MPS states for the next sweep
+			ψ_right_collection = build_psi_right(circuit_gates, ψ_T; cutoff)
 			
 
 			

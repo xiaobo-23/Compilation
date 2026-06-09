@@ -26,7 +26,51 @@ using LinearAlgebra
 using Random
 using Printf
 
-include("compute_cost_function.jl")
+
+"""
+    dagger_layer(gates) -> Vector{ITensor}
+
+Hermitian-conjugate a layer of gates: each `G ↦ G†` via
+`swapprime(dag(g), 0 => 1)` (conjugate, then swap the primed/unprimed site
+indices). Used to "un-apply" a layer from the bra/target side — `⟨ψ_T| G` is
+represented as the ket `G† |ψ_T⟩` — which is how `build_psi_right` folds the
+upper layers into `ψ_right`.
+
+`dag`/`swapprime` are non-mutating, so the input `gates` (and the circuit they
+belong to) are left untouched — no `deepcopy` required.
+"""
+dagger_layer(gates) = [swapprime(dag(g), 0 => 1) for g in gates]
+
+
+
+"""
+    build_psi_right(circuit_gates, ψ_T; cutoff) -> Vector{MPS}
+
+Build the right-environment collection for the layer-by-layer sweep. Entry
+`coll[idx]` is the target MPS with every layer *above* `idx` folded in from the
+bra side — `⟨ψ_T| (L_{idx+1} … L_{nlayers})` written as a ket — so it is exactly
+the `ψ_right` used when optimizing layer `idx` (it excludes layer `idx` itself).
+
+Constructed incrementally in `O(nlayers)` MPS applies:
+* `coll[nlayers] = deepcopy(ψ_T)`  — an independent copy, not an alias of `ψ_T`;
+* `coll[idx] = normalize!(apply(dagger_layer(L_{idx+1}), coll[idx+1]; cutoff))`,
+  walking `idx` from `nlayers - 1` down to `1`.
+
+Each entry is a fresh, independent `MPS` (`apply` does not mutate its input).
+In the current forward-only sweep this is rebuilt once per sweep; once a
+backward sweep is added, `ψ_right` can instead be updated on the fly — the
+mirror of the `ψ_left` forward update.
+"""
+function build_psi_right(circuit_gates, ψ_T; cutoff)
+    nlayers = length(circuit_gates)
+    coll = Vector{MPS}(undef, nlayers)
+    coll[nlayers] = deepcopy(ψ_T)         # independent copy, not an alias
+    for idx in nlayers - 1 : -1 : 1
+        coll[idx] = normalize!(apply(dagger_layer(circuit_gates[idx + 1]),
+                                     coll[idx + 1]; cutoff))
+    end
+    return coll
+end
 
 
 """
