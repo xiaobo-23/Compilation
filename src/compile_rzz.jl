@@ -41,7 +41,7 @@ if GEOMETRY === :cluster
     const N = model.Nx * model.Ny
 	const target_mps_path = joinpath(@__DIR__, "..", "data",
         "kitaev_honeycomb_kappa-0.4_Lx4_Ly3.h5")
-    const nsweeps = 2
+    const nsweeps = 50
     const stop_criteria = 1e-4
     const per_stage_stop_criteria = 1e-6
 elseif GEOMETRY === :interferometer
@@ -203,33 +203,37 @@ let
 			end
 
 
+			fidelity_sweep = 0.0
 			# Backward pass: optimize layers top → bottom, maintaining ψ_right on the fly
 			for layer_idx in length(circuit_gates) : -1 : 1
 				# fresh = deepcopy(ψ_T); for i in nlayers:-1:layer_idx+1; fresh = apply(dagger_layer(circuit_gates[i]), fresh; cutoff); end; normalize!(fresh)
 				# @info 1 - abs(inner(fresh, ψ_right_collection[layer_idx])) < 1e-10
 
-				optimize_layer!(circuit_gates[layer_idx], input_pairs[layer_idx],
+				fid = optimize_layer!(circuit_gates[layer_idx], input_pairs[layer_idx],
 					ψ_left_collection[layer_idx], ψ_right_collection[layer_idx], sites, N;
 					default_iters, stop_criteria, layer_idx,
 					debug_refs = nothing)    # DEBUG: (ψ₀, ψ_T, circuit_gates, cutoff) for the from-scratch cross-check
 
 				# Update the right intermediate MPS states for the next layer
 				layer_idx > 1 && (ψ_right_collection[layer_idx - 1] = normalize!(apply(dagger_layer(circuit_gates[layer_idx]), ψ_right_collection[layer_idx]; cutoff=cutoff)))
+				layer_idx == 1 && (fidelity_sweep = fid)
 			end
 
 		
 
 			# Compute the cost function after each sweep — bind once, use for both push! and printf.
-			fidelity_sweep = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
-			en             = validate_circuit(circuit_gates, ψ₀, geom; cutoff=cutoff)
-
 			push!(cost_function,   fidelity_sweep)
+			# fidelity_sweep = compute_cost_function_multi_layers(ψ₀, ψ_T, circuit_gates, cutoff)
+			
+			
+			en	= validate_circuit(circuit_gates, ψ₀, geom; cutoff=cutoff)
 			push!(energy_trace,    en.E_opt)
 			push!(plaquette_trace, en.wp_opt)
 
-			println()
-			@printf "──── sweep %d/%d done  Fidelity = %+.6f  Energy = %+.6f\n" iteration nsweeps fidelity_sweep en.E_opt
-			println(repeat("-", 100), "\n")
+			println("\n")
+			@printf "-------- sweep %d/%d done  Fidelity = %+.6f  Energy = %+.6f\n" iteration nsweeps fidelity_sweep en.E_opt
+			@printf "         ⟨Wp⟩ = %s\n" join((@sprintf("%+.6f", w) for w in en.wp_opt), "  ")
+			println(repeat("-", 150), "\n")
 
 
 			# # Per-stage early stop 
@@ -262,14 +266,12 @@ let
 	ΔE           = compiled.E_opt - target.E_target
 
 	
-	
 	# Cross-check the target energy against the stored DMRG ground-state energy.
 	E0_stored = h5open(target_mps_path, "r") do f; haskey(f, "E0") ? read(f, "E0") : nothing; end
 	if E0_stored !== nothing
 		ΔE0 = abs(target.E_target - E0_stored)
 		ΔE0 < 1e-6 || @warn "Computed target energy disagrees with stored E0" E0_stored target.E_target ΔE0
 	end
-
 
 
 	# -------- Report ------------------------------------------------------------------------------------------
