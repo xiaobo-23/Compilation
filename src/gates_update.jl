@@ -4,18 +4,13 @@
 # (for single-parameter Rzz).
 
 using ITensors, ITensorMPS
-using MKL
 using LinearAlgebra
-using Random
-using Printf
-
-include("compute_cost_function.jl")
-include("cached_environment.jl")
 
 
 const PauliX = ComplexF64[0  1;  1  0]
 const PauliY = ComplexF64[0 -im; im  0]
 const PauliZ = ComplexF64[1  0;  0 -1]
+
 
 const PAULI_PRODUCTS = Dict{String, Matrix{ComplexF64}}(
     "Rxx" => kron(PauliX, PauliX),
@@ -173,4 +168,115 @@ function update_Rzz_from_env(E_T, sites, i, j)
 	end
 
     return updated_T
+end
+
+
+# ------------------------------------------------------------------------------------------
+# Per-layer optimization driver shared by the forward and backward passes
+# ------------------------------------------------------------------------------------------
+"""
+    optimize_layer!(optimization_gates, idx_pairs, ψ_left, ψ_right, sites, N;
+                    default_iters, stop_criteria, layer_idx,
+                    min_iters = 5, debug_refs = nothing) -> Float64
+
+Optimize every gate of one circuit layer by alternating left→right and
+right→left Evenbly–Vidal sub-sweeps over the cached `ups`/`dns` environments,
+holding `ψ_left` (layers below, applied to ψ₀) and `ψ_right` (layers above,
+folded into ψ_T from the bra side) fixed.
+
+The global overlap Re⟨ψ_T|U|ψ₀⟩ is read off the environment for free: at the
+last update of each right→left sub-sweep (gate k = 1), `E_T` contains every
+other gate of the circuit at its current value, so `real((E_T * new_gate)[1])`
+equals the overlap of the full current circuit, up to the truncations used to
+build ψ_left/ψ_right. Early stopping compares consecutive readouts once
+`iter_idx > min_iters`.
+
+Mutates `optimization_gates` in place — pass `circuit_gates[layer_idx]`, which
+aliases the same vector. Returns the final fidelity readout (valid at return
+time; later layer updates change the circuit).
+
+`debug_refs = (ψ₀, ψ_T, circuit_gates, cutoff)` additionally evaluates the
+from-scratch `compute_cost_function_multi_layers` each inner iteration and
+logs both values with their discrepancy — O(nlayers) MPS applies per call,
+debugging only; leave as `nothing` in production runs.
+"""
+function optimize_layer!(optimization_gates, idx_pairs, ψ_left, ψ_right, sites, N;
+                         default_iters::Int, stop_criteria::Real, layer_idx::Int,
+                         min_iters::Int = 5, debug_refs = nothing)
+    M = length(idx_pairs)
+
+    # Precompute the left and right environments for each gate.
+    ups = Vector{ITensor}(undef, M)
+    dns = Vector{ITensor}(undef, M)
+
+    init_ups_left!(ups, ψ_left, ψ_right, idx_pairs)
+    precompute_dns!(dns, ψ_left, ψ_right, optimization_gates, idx_pairs, N)
+
+    # Optimize all gates in the current layer by sweeping
+    fidelity₁ = fidelity₂ = 0.0
+    for iter_idx in 1:default_iters
+        # Forward sub-sweep from left to right
+        for k in 1 : M
+            E_T = build_env(ups, dns, ψ_left, ψ_right, k, idx_pairs)
+
+            new_gate = if length(idx_pairs[k]) == 1
+                update_single_qubit_from_env(E_T, sites[idx_pairs[k][1]])
+            else
+                update_Rzz_from_env(E_T, sites, idx_pairs[k][1], idx_pairs[k][2])
+            end
+            optimization_gates[k] = new_gate
+
+            if k < M
+                extend_ups!(ups, ψ_left, ψ_right, optimization_gates, idx_pairs, k)
+            end
+        end
+
+
+        # Backward sub-sweep from right to left
+        for k in M : -1 : 1
+            E_T = build_env(ups, dns, ψ_left, ψ_right, k, idx_pairs)
+
+            new_gate = if length(idx_pairs[k]) == 1
+                update_single_qubit_from_env(E_T, sites[idx_pairs[k][1]])
+            else
+                update_Rzz_from_env(E_T, sites, idx_pairs[k][1], idx_pairs[k][2])
+            end
+            optimization_gates[k] = new_gate
+
+            if k > 1
+                contract_dns_from_right!(dns, ψ_left, ψ_right, optimization_gates, idx_pairs, k)
+            else
+                # Global overlap for free: E_T at k = 1 contains every other gate at its
+                # freshest value, so contracting with the new gate closes ⟨ψ_T|U|ψ₀⟩.
+                fidelity₂ = real((E_T * new_gate)[1])
+
+                # DEBUG: cross-check the environment readout fidelity₂ = real((E_T * gate)[1])
+                # against an independent, essentially exact contraction of the SAME network
+                # ⟨ψ_right| L |ψ_left⟩. Identical inputs ⇒ must agree to machine precision;
+                # any larger deviation means the ups/dns environments are stale or mis-indexed.
+                # fidelity_direct = real(inner(ψ_right, apply(optimization_gates, ψ_left; cutoff = 1e-15)))
+                # abs(fidelity₂ - fidelity_direct) < 1e-10 || @warn "Env readout ≠ direct layer contraction — check ups/dns" layer_idx iter_idx fidelity₂ fidelity_direct
+                # @info "Env readout vs direct contraction" layer_idx iter_idx fidelity₂ fidelity_direct
+            end
+        end
+
+
+        # DEBUG: cross-check the environment readout against the from-scratch cost
+        # function. Expect a discrepancy of O(nlayers × cutoff) — the two values follow
+        # different truncation paths — shrinking with the cutoff, NOT machine precision.
+        if debug_refs !== nothing
+            ψ₀_dbg, ψ_T_dbg, circuit_dbg, cutoff_dbg = debug_refs
+            fidelity_scratch = compute_cost_function_multi_layers(ψ₀_dbg, ψ_T_dbg, circuit_dbg, cutoff_dbg)
+            @info "Compared cost function with direct computation" fidelity_sweep = fidelity_scratch fidelity_env = fidelity₂ discrepancy = abs(fidelity_scratch - fidelity₂)
+        end
+
+        if iter_idx > min_iters && abs(fidelity₂ - fidelity₁) < stop_criteria
+            println("The change of the cost function is smaller than the stopping criteria. Stop the optimization of gates at layer $(layer_idx).")
+            println([fidelity₁, abs(fidelity₂ - fidelity₁)])
+            break
+        end
+        fidelity₁ = fidelity₂
+    end
+
+    return fidelity₂
 end
